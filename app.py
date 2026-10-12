@@ -73,12 +73,12 @@ HOST = os.environ.get("HOST") or "0.0.0.0"   # Render 要求监听 0.0.0.0
 
 # 首次启动时写入的默认资料（换成你自己的即可，也可以在后台直接改）
 DEFAULT_PROFILE = {
-    "name": "败絮",
+    "name": "示例名字",
     "tagline": "三角洲行动 · PC 端个人陪玩",
     "headline": "一起出发。\n尽兴而归。",
     "bio": "技术在线，情绪价值拉满。\n个人接单，非工作室，无中间商。猛攻、跑刀、任务、熟图，或者只是想找个人边聊边玩，都可以。听你指挥，也陪你放松。",
     "experience": "",
-    "wechat": "NekoByNya",
+    "wechat": "your_wechat_id",
     "xianyu": "",
     "avatar": "",
     "background": "",          # 主页背景图：/api/media/xxx 或外部图片网址

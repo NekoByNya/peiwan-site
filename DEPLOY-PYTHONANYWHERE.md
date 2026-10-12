@@ -94,6 +94,12 @@ unzip -o peiwan-site-上传用.zip -d peiwan-site
 点 **WSGI configuration file** 那个链接，它会打开一个编辑器。**把里面所有内容删掉**，替换成下面这几行
 （把两处 `你的用户名` 换成你的真实用户名）：
 
+> ⚠️ **下面这行里的密码不要照抄**，换成你自己临时想的一个（至少 6 位）。
+> 它只是"首次启动时用一次"的初始密码——网站第一次跑起来把密码存进数据库之后，
+> 这行就再也不起作用了，之后要改密码请到后台「安全与备份 → 修改管理密码」。
+> **千万不要把真实密码写进这个文件再传到 GitHub**（这个仓库是公开的）。
+> 更稳妥的做法：先随便填一个，登录后台后立刻改掉。
+
 ```python
 import os
 import sys
@@ -102,8 +108,8 @@ path = '/home/你的用户名/peiwan-site'
 if path not in sys.path:
     sys.path.insert(0, path)
 
-# 你后台的登录密码（首次启动写入；登录后可以在后台改）
-os.environ['ADMIN_PASSWORD'] = 'bx-Delta-7k2mQ9'
+# 初始密码：随便填一个临时的，登录后台后马上去「安全与备份」改掉
+os.environ['ADMIN_PASSWORD'] = '换成你自己的临时密码'
 
 from wsgi import application
 ```

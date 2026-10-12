@@ -123,7 +123,7 @@ check("全新站点：明天 24 小时全部可预约",
 today_status = sorted({x["status"] for x in pub["slots"][:24]})
 check("今天的状态只用合法的值（过去的算 past）",
       set(today_status) <= {"free", "past"}, str(today_status))
-check("资料已预置", pub["profile"]["name"] == "败絮" and pub["profile"]["wechat"] == "NekoByNya")
+check("资料已预置", pub["profile"]["name"] == "示例名字" and pub["profile"]["wechat"] == "your_wechat_id")
 
 now = int(time.time() * 1000)
 target = next(x["start"] for x in pub["slots"] if x["status"] == "free")
@@ -340,7 +340,7 @@ print("=== 13. 分享卡片与 HEAD 请求 ===")
 html = call("/")[1]
 check("主页里的 {{占位符}} 已全部替换", "{{" not in html and "}}" not in html)
 title_start = html.find("<title>")
-check("浏览器标题带上了名字", "<title>败絮" in html, html[title_start:title_start + 50])
+check("浏览器标题带上了名字", "<title>示例名字" in html, html[title_start:title_start + 50])
 check("og 分享标签存在",
       'property="og:title"' in html and 'property="og:description"' in html
       and 'property="og:site_name"' in html)
@@ -394,7 +394,7 @@ check("改了名字，分享标题立刻跟着变", "<title>测试名字" in htm
       html2[html2.find("<title>"):html2.find("<title>") + 40])
 cur2 = json.loads(call("/api/admin")[1])
 prof2 = dict(cur2["profile"])
-prof2["name"] = "败絮"
+prof2["name"] = "示例名字"
 call("/api/admin/profile", "PUT", {"profile": prof2, "revision": cur2["profileRevision"]})
 
 print("=== 14. 接单总开关 与 全天休息规则 ===")

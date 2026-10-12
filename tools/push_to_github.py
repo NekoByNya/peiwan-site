@@ -131,6 +131,23 @@ def main():
         print("[失败] 这个令牌没有写入权限（permissions.push 是 false）")
         return 1
 
+    # ---------- 1.5 取账号信息，用来当"提交作者" ----------
+    # 为什么要这样做：GitHub 账号里有个隐私开关
+    #   ☑ Keep my email addresses private
+    #   ☑ Block command line pushes that expose my email
+    # 如果提交里带着你的真实邮箱，推送会被 GitHub 拦下来。
+    # 所以这里显式使用 GitHub 给每个账号提供的匿名邮箱：
+    #   数字ID+用户名@users.noreply.github.com
+    author = None
+    code, me = api("GET", "/user", args.token)
+    if code == 200 and me.get("login") and me.get("id"):
+        author = {
+            "name": me["login"],
+            "email": "%s+%s@users.noreply.github.com" % (me["id"], me["login"]),
+        }
+        print("[1.5/6] 提交作者：%s <%s>" % (author["name"], author["email"]))
+        print("        （用匿名邮箱，不会把你的真实邮箱写进公开提交记录）")
+
     # ---------- 2. 看仓库里现在有没有东西 ----------
     code, ref = api("GET", "/repos/%s/git/ref/heads/%s" % (args.repo, args.branch), args.token)
     parent_sha = base_tree = None
@@ -184,6 +201,9 @@ def main():
 
     # ---------- 5. 建提交 ----------
     commit_payload = {"message": args.message, "tree": res["sha"]}
+    if author:
+        commit_payload["author"] = author
+        commit_payload["committer"] = author
     if parent_sha:
         commit_payload["parents"] = [parent_sha]
     code, res = api("POST", "/repos/%s/git/commits" % args.repo, args.token, commit_payload)
