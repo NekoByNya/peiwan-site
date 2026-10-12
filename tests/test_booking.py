@@ -210,6 +210,48 @@ def main_tests():
                  "contactType": "telegram"}, ip="198.51.100.49")
     check("contactType 非法值 → 400", s == 400 and "微信" in b, b.strip()[:110])
 
+    print("=== 1c. 游戏名：一套代码能开任何游戏的预约站 ===")
+    # 备份原资料，测完还原（不然会影响后面的测试）
+    admin = json.loads(call("/api/admin")[1])
+    original = dict(admin["profile"])
+    cur_rev = [admin["profileRevision"]]
+
+    def save_profile(**changes):
+        prof = dict(original)
+        prof.update(changes)
+        s, b = call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur_rev[0]})
+        if s == 200:
+            cur_rev[0] = json.loads(b).get("revision", cur_rev[0] + 1) \
+                if isinstance(json.loads(b), dict) else cur_rev[0] + 1
+        return s
+
+    def book_and_get_message(ip):
+        s, b = call("/api/book", "POST",
+                    {"hours": free_run(1), "mode": mode["name"], "contact": "wx_game_test",
+                     "contactType": "wechat"}, ip=ip)
+        return s, (json.loads(b).get("message") or "") if s == 200 else ""
+
+    s = save_profile(game="永劫无间", platform="PC 电脑端")
+    check("后台能保存「游戏名」字段", s == 200, "status=%s" % s)
+    s, msg = book_and_get_message("198.51.100.61")
+    check("预约文案里出现游戏名「永劫无间」", s == 200 and "想约永劫无间 PC 电脑端陪玩" in msg,
+          msg.replace("\n", " / ")[:90])
+
+    save_profile(game="", platform="PC 电脑端")
+    s, msg = book_and_get_message("198.51.100.62")
+    check("游戏名留空时只说平台，不会出现「想约 陪玩」",
+          s == 200 and "想约PC 电脑端陪玩" in msg and "想约 " not in msg,
+          msg.replace("\n", " / ")[:90])
+
+    save_profile(game="", platform="")
+    s, msg = book_and_get_message("198.51.100.63")
+    check("游戏名和平台都留空 → 用兜底话术",
+          s == 200 and "我想约你的陪玩服务" in msg, msg.replace("\n", " / ")[:90])
+
+    save_profile(**{k: original.get(k, "") for k in ("game", "platform")})
+    check("测试后资料已还原", json.loads(call("/api/admin")[1])["profile"].get("game") == original.get("game"),
+          "game=%r" % json.loads(call("/api/admin")[1])["profile"].get("game"))
+
     print("=== 2. 参数校验（每条都要有清楚的中文错误） ===")
     s, b = call("/api/book", "POST",
                 {"hours": free_run(1), "mode": mode["name"], "contact": ""}, ip="198.51.100.21")

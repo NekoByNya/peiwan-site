@@ -451,6 +451,7 @@ function fillProfileForm() {
   const p = state.profile;
   $('#pName').value = p.name || '';
   $('#pTagline').value = p.tagline || '';
+  $('#pGame').value = p.game || '';
   $('#pPlatform').value = p.platform || '';
   $('#pWechat').value = p.wechat || '';
   $('#pXianyu').value = p.xianyu || '';
@@ -501,6 +502,7 @@ function collectProfile() {
     ...state.profile,
     name: $('#pName').value.trim(),
     tagline: $('#pTagline').value.trim(),
+    game: $('#pGame').value.trim(),
     platform: $('#pPlatform').value.trim(),
     wechat: $('#pWechat').value.trim(),
     xianyu: $('#pXianyu').value.trim(),

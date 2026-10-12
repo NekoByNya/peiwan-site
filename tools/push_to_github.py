@@ -34,7 +34,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 API = os.environ.get("GITHUB_API") or "https://api.github.com"
 
 # 要传的文件（和 tools/make_package.py 保持一致）
-FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat",
+FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat", "start-lan.bat",
          "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
 # 注意：这里**故意不含** .github —— 细粒度令牌推送 .github/workflows/ 需要额外的
 # "Workflows" 权限，否则会报 HTTP 403（Resource not accessible by personal access token）。

@@ -69,11 +69,17 @@ WEEK_CN = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 # 首次启动时的管理员密码（之后请在"安全与备份"里改掉）
 DEFAULT_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "baixu123"
 PORT = int(os.environ.get("PORT") or 8123)
-HOST = os.environ.get("HOST") or "0.0.0.0"   # Render 要求监听 0.0.0.0
+# 监听地址。默认只监听本机 127.0.0.1 —— 这样同一个 WiFi 下的其他设备
+# （手机、室友的电脑、咖啡厅的陌生人）都连不上你的网站和后台，最安全。
+# 需要临时放开时，用环境变量覆盖：
+#   手机测试：  set HOST=0.0.0.0 && python app.py   （或者双击 start-lan.bat）
+#   云平台：    Render 这类平台需要监听所有网卡，在平台的环境变量里设 HOST=0.0.0.0
+HOST = os.environ.get("HOST") or "127.0.0.1"
 
 # 首次启动时写入的默认资料（换成你自己的即可，也可以在后台直接改）
 DEFAULT_PROFILE = {
     "name": "示例名字",
+    "game": "",                              # ← 游戏名（留空也行，文案会自动省略）
     "tagline": "三角洲行动 · PC 端个人陪玩",
     "headline": "一起出发。\n尽兴而归。",
     "bio": "技术在线，情绪价值拉满。\n个人接单，非工作室，无中间商。猛攻、跑刀、任务、熟图，或者只是想找个人边聊边玩，都可以。听你指挥，也陪你放松。",
@@ -607,12 +613,30 @@ def contact_label(contact_type):
     return CONTACT_TYPES.get(str(contact_type or ""), CONTACT_TYPES[CONTACT_DEFAULT])
 
 
+def booking_head(profile):
+    """
+    预约文案的第一句。游戏名（game）和接单平台（platform）都在后台可改，
+    所以同一套代码可以拿去开任何游戏的预约站，不用改代码。
+
+      游戏名=三角洲行动 平台=PC 电脑端 → 你好，X！想约三角洲行动 PC 电脑端陪玩。
+      游戏名=永劫无间   平台=PC 电脑端 → 你好，X！想约永劫无间 PC 电脑端陪玩。
+      两个都留空                        → 你好，X！我想约你的陪玩服务。
+    """
+    name = str(profile.get("name") or "").strip()
+    game = str(profile.get("game") or "").strip()
+    platform = str(profile.get("platform") or "").strip()
+    what = " ".join(x for x in (game, platform) if x)
+    if what:
+        return "你好，%s！想约%s陪玩。" % (name, what)
+    return "你好，%s！我想约你的陪玩服务。" % name
+
+
 def booking_message(profile, mode_name, segments, total_hours, total_price, contact, contact_type):
     """拼一段给客户复制到微信的文案（格式和前台 buildMessage() 保持一致）"""
     lines = ["%d. %s–%s" % (i, cn_label(seg["start"]), cn_hhmm(seg["end"]))
              for i, seg in enumerate(segments, 1)]
     return "\n".join([
-        "你好，%s！想约三角洲行动 %s陪玩。" % (profile.get("name") or "", profile.get("platform") or ""),
+        booking_head(profile),
         "模式：%s" % mode_name,
         "游玩时间（北京时间）：",
     ] + lines + [

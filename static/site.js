@@ -307,7 +307,10 @@ function buildMessage() {
   const contact = $('#bookContact') ? $('#bookContact').value.trim() : '';
   const type = currentContactType();
 
-  return `你好，${p.name}！想约三角洲行动 ${p.platform || ''}陪玩。\n`
+  // 游戏名 / 平台都来自后台资料 —— 同一套代码可以开任何游戏的预约站，不用改代码
+  const what = [p.game, p.platform].map((x) => (x || '').trim()).filter(Boolean).join(' ');
+  const head = what ? `你好，${p.name}！想约${what}陪玩。` : `你好，${p.name}！我想约你的陪玩服务。`;
+  return `${head}\n`
     + `模式：${price.name}\n`
     + `游玩时间（北京时间）：\n${lines}\n`
     + `共 ${segments.length} 段、${total} 小时，参考费用 ¥${fee}。\n`

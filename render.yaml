@@ -20,6 +20,8 @@ services:
     envVars:
       - key: ADMIN_PASSWORD
         sync: false              # 不写死在文件里！Render 会在创建时弹窗让你自己输入
+      - key: HOST
+        value: 0.0.0.0           # 云平台必须监听所有网卡（本地为了安全默认只听 127.0.0.1）
       - key: DATA_DIR
         value: ./data            # 挂了持久磁盘就改成 /var/data（见下面的注释）
     # ------------------------------------------------------------------------

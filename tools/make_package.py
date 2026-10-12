@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(os.path.dirname(ROOT), "peiwan-site-上传用.zip")
 
 # 要打包的文件（显式列出来，避免误把数据打进去）
-FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat",
+FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat", "start-lan.bat",
          "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
 DIRS = ["static", "templates", "tests", "docs", "tools", ".github"]
 SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", ".git"}

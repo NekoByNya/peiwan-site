@@ -304,7 +304,7 @@ git push
 
 | Render 字段 | 对应 |
 |---|---|
-| Start Command `python app.py` | 运行 `app.py`，它自己读 `$PORT` 和 `$HOST=0.0.0.0` |
+| Start Command `python app.py` | 运行 `app.py`，它自己读 `$PORT`；云平台需要在环境变量里设 `HOST=0.0.0.0`（`render.yaml` 已经写好） |
 | `DATA_DIR` 环境变量 | `app.py` 第 1 节的 `DATA_DIR`，决定数据库和图片存哪 |
 | `ADMIN_PASSWORD` 环境变量 | 首次启动时写入数据库的初始密码，之后在后台改 |
 | Persistent Disk `/var/data` | 把 `DATA_DIR` 指过去，数据就不会随部署消失 |
