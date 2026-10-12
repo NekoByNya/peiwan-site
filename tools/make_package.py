@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 打包上传包：把"要传上 GitHub 的文件"打成 zip，方便你备份或在另一台电脑上打开。
 
@@ -24,9 +24,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(os.path.dirname(ROOT), "peiwan-site-上传用.zip")
 
 # 要打包的文件（显式列出来，避免误把数据打进去）
-FILES = ["app.py", "requirements.txt", "render.yaml", "start.bat",
-         "README.md", "DEPLOY.md", ".gitignore"]
-DIRS = ["static", "templates", "tests", "docs", "tools"]
+FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat",
+         "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
+DIRS = ["static", "templates", "tests", "docs", "tools", ".github"]
 SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", ".git"}
 
 

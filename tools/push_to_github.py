@@ -34,8 +34,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 API = os.environ.get("GITHUB_API") or "https://api.github.com"
 
 # 要传的文件（和 tools/make_package.py 保持一致）
-FILES = ["app.py", "requirements.txt", "render.yaml", "start.bat",
-         "README.md", "DEPLOY.md", ".gitignore"]
+FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat",
+         "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
+# 注意：这里**故意不含** .github —— 细粒度令牌推送 .github/workflows/ 需要额外的
+# "Workflows" 权限，否则会报 HTTP 403（Resource not accessible by personal access token）。
+# 保活机器人是可选的（PythonAnywhere 不会休眠，根本不需要它），
+# 想加的话去 GitHub 网页上点 "Add file → Create new file" 手工建一个即可。
 DIRS = ["static", "templates", "tests", "docs", "tools"]
 SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", ".git"}
 

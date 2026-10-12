@@ -744,6 +744,7 @@ class Handler(BaseHTTPRequestHandler):
                 "profile": get_profile(),
                 "profileRevision": get_revision(),
                 "lastExportAt": int(get_store("lastExportAt") or 0),
+                "dataDir": DATA_DIR,   # 让后台显示"数据放在哪里"
                 "schedule": {"locks": list_locks(), "rules": list_rules()},
                 "gallery": list_gallery(),
             })

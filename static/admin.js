@@ -97,6 +97,9 @@ $('#loginForm').addEventListener('submit', async (e) => {
     $('#password').value = '';
     showAdmin();
     await loadAll();
+    // 从登录页进来时也要初始化"锁定一个时段"表单，
+    // 否则开始/结束时间会停在 00:00–24:00（浏览器实测发现的 bug）
+    resetLockForm();
   } catch (err) {
     $('#loginHint').textContent = err.message;
     $('#loginHint').className = 'hint error';
@@ -137,6 +140,7 @@ async function loadAll() {
   state.profile = admin.profile;
   state.revision = admin.profileRevision;
   state.lastExportAt = admin.lastExportAt || 0;
+  state.dataDir = admin.dataDir || '';
   state.locks = admin.schedule.locks;
   state.rules = admin.schedule.rules;
   state.gallery = admin.gallery;
@@ -164,8 +168,27 @@ function renderAll() {
   fillProfileForm();
   renderGallery();
   renderBackupState();
+  renderDataHint();
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
+}
+
+/* ---------- 「数据放在哪里」：以前这块是空的（浏览器实测发现的 bug） ---------- */
+function renderDataHint() {
+  const el = $('#dataHint');
+  if (!el) return;
+  const dir = state.dataDir || '（服务器没有返回路径）';
+  const rows = [
+    `<b>数据在服务器的这个目录里：</b><code>${escapeHtml(dir)}</code>`,
+    '· <code>site.db</code> — 预约记录、休息规则、你的资料、展示墙信息',
+    '· <code>uploads/</code> — 展示墙图片、背景图、头像等文件',
+    '',
+    '在 Render 上，这个路径由环境变量 <code>DATA_DIR</code> 决定'
+      + '（默认 <code>./data</code>；挂了持久磁盘就是 <code>/var/data</code>）。',
+    '⚠️ 免费实例休眠或重新部署时，这个目录会被清空 —— 所以请定期点上面的「下载备份 JSON」，'
+      + '真丢了用「从备份恢复」导回去。',
+  ];
+  el.innerHTML = rows.map((r) => (r ? `<p style="margin:4px 0">${r}</p>` : '<p style="margin:8px 0"></p>')).join('');
 }
 
 /* ---------- 统计 ---------- */

@@ -368,3 +368,22 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .about-grid { grid-template-columns: 1fr; }
   .hero { padding: 40px 0 30px; }
 }
+
+/* 手机上的"选择模式"弹窗：三档尽量一屏看完，底部按钮始终可见
+   （桌面上本来就能一屏看完，所以只在窄屏生效） */
+@media (max-width: 560px) {
+  .modal { padding: 18px 16px; }
+  .modal h3 { font-size: 18px; }
+  .modal .modal-sub { font-size: 12.5px; margin-bottom: 12px; }
+  .modal .cards { gap: 9px; }
+  .modal .card { padding: 11px 13px; gap: 3px; }
+  .modal .card .no { font-size: 10.5px; }
+  .modal .card h3 { font-size: 16px; }
+  .modal .card p { font-size: 12.5px; line-height: 1.5; }
+  .modal .card .price { font-size: 19px; }
+  .modal textarea.message { min-height: 128px; font-size: 13px; }
+  .modal-actions {
+    position: sticky; bottom: 0;        /* 滚动时按钮不会滑走 */
+    background: var(--bg2); margin-top: 12px; padding: 10px 0 2px;
+  }
+}
