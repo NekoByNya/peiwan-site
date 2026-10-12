@@ -1,0 +1,32 @@
+# ============================================================================
+#  Render 部署蓝图
+#
+#  用法：把仓库推上 GitHub 后，在 Render 里选  New → Blueprint → 选中这个仓库，
+#        Render 会自动读下面这些配置把服务建好
+#        （你只需要在弹出的框里输一次管理密码，别把它写在文件里）。
+#
+#  官方字段说明：https://render.com/docs/blueprint-spec
+# ============================================================================
+services:
+  - type: web
+    name: peiwan-site            # 决定网址：https://peiwan-site.onrender.com（重名就换一个）
+    runtime: python
+    plan: free                   # 免费档：15 分钟没人访问会休眠，首次打开约 1 分钟
+    region: singapore            # 离国内最近的机房（也可填 oregon / ohio / virginia / frankfurt）
+    buildCommand: "echo 本项目零依赖，无需构建"
+    startCommand: "python app.py"
+    healthCheckPath: /api/ping   # 用保活接口当健康检查：不查数据库，响应只有几十字节
+    autoDeployTrigger: commit    # 每次推到 main 分支就自动重新部署
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false              # 不写死在文件里！Render 会在创建时弹窗让你自己输入
+      - key: DATA_DIR
+        value: ./data            # 挂了持久磁盘就改成 /var/data（见下面的注释）
+    # ------------------------------------------------------------------------
+    # 想让数据在休眠 / 重新部署后不丢：把实例升级到付费档，取消下面这三行的注释，
+    # 并把上面的 DATA_DIR 改成 /var/data，然后重新同步 Blueprint。
+    # ------------------------------------------------------------------------
+    # disk:
+    #   name: peiwan-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

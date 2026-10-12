@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理终端</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛠</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ==================== 登录 ==================== -->
+<div class="login-wrap" id="loginView">
+  <div class="login-card">
+    <h1>欢迎回来。</h1>
+    <p>输入管理员密码，进入你的管理终端。</p>
+    <form id="loginForm">
+      <div class="field">
+        <label for="password">管理员密码</label>
+        <input type="password" id="password" autocomplete="current-password" placeholder="请输入密码" required>
+      </div>
+      <button class="button primary full" type="submit" id="loginBtn">进入管理终端</button>
+      <p class="hint" id="loginHint" style="margin-top:14px">首次使用的初始密码写在 app.py 里，登录后请到「安全与备份」修改。</p>
+    </form>
+    <p class="hint" style="margin-top:18px"><a href="/" style="color:var(--accent)">← 返回公开主页</a></p>
+  </div>
+</div>
+
+<!-- ==================== 后台 ==================== -->
+<div class="admin-page container" id="adminView" style="display:none">
+  <div class="admin-top">
+    <h1 id="adminTitle">管理终端</h1>
+    <span class="badge ok" id="adminWho"></span>
+    <div class="spacer"></div>
+    <button class="button small ghost" id="syncBtn">刷新数据</button>
+    <a class="button small ghost" href="/" target="_blank">看主页</a>
+    <button class="button small danger" id="logoutBtn">退出</button>
+  </div>
+
+  <!-- 免费实例会清空数据，这里按"多久没备份"给你报警 -->
+  <div class="notice" id="backupNotice" hidden></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="schedule">预约与时间</button>
+    <button class="tab" data-tab="profile">资料与报价</button>
+    <button class="tab" data-tab="gallery">展示墙</button>
+    <button class="tab" data-tab="settings">安全与备份</button>
+  </div>
+
+  <!-- ---------- 预约与时间 ---------- -->
+  <section data-panel="schedule">
+    <div class="stats" id="stats"></div>
+
+    <div class="panel">
+      <h2>每日时间表</h2>
+      <p class="sub">点空闲格 = 锁定预约；开启「多选」可一次锁多格。已有预约不会被休息规则覆盖。</p>
+
+      <div class="grid-2" style="align-items:end;margin-bottom:14px">
+        <div class="field" style="margin:0">
+          <label for="adminDate">查看日期</label>
+          <input type="date" id="adminDate">
+        </div>
+        <div class="check-row" style="padding-bottom:10px">
+          <input type="checkbox" id="multiSelect">
+          <label for="multiSelect">多选批量锁定（已选 <b id="batchCount">0</b> 小时）</label>
+        </div>
+      </div>
+
+      <div class="hour-grid" id="adminGrid"></div>
+
+      <div class="panel" style="background:var(--panel2);margin:16px 0 0">
+        <h2 id="lockFormTitle" style="font-size:15px">锁定一个时段</h2>
+        <div class="grid-2" style="margin-top:12px">
+          <div class="field">
+            <label for="lockKind">类型</label>
+            <select id="lockKind">
+              <option value="booking">预约（老板已确认）</option>
+              <option value="rest">休息（这段时间不接单）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="lockClient">老板称呼（仅自己可见）</label>
+            <input id="lockClient" placeholder="例如：小王老板" maxlength="40">
+          </div>
+          <div class="field">
+            <label for="lockStart">开始时间</label>
+            <select id="lockStart"></select>
+          </div>
+          <div class="field">
+            <label for="lockEnd">结束时间</label>
+            <select id="lockEnd"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="lockNote">私密备注（模式、人数、付款情况等）</label>
+          <textarea id="lockNote" maxlength="200" placeholder="例如：机密行动 · 1陪2 · 微信已付 2 小时"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="button primary" id="saveLock">保存时段</button>
+          <button class="button ghost" id="resetLock">取消编辑，新增时段</button>
+        </div>
+      </div>
+
+      <h2 style="margin:22px 0 4px;font-size:15px">这一天已锁定</h2>
+      <div class="record-list" id="lockList"></div>
+    </div>
+
+    <div class="panel">
+      <h2>固定休息规则</h2>
+      <p class="sub">按周重复，可跨午夜（例如 22:00–06:00）。用于每天固定睡觉、上课的时间。</p>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>重复星期</label>
+          <div class="tags" id="ruleDays"></div>
+        </div>
+        <div class="field">
+          <label for="ruleStart">开始 / 结束时间</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="ruleStart"></select>
+            <span class="hint">到</span>
+            <select id="ruleEnd"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="ruleFrom">生效日期</label>
+          <input type="date" id="ruleFrom">
+        </div>
+        <div class="field">
+          <label for="ruleUntil">结束日期（留空 = 一直有效）</label>
+          <input type="date" id="ruleUntil">
+        </div>
+      </div>
+      <div class="field">
+        <label for="ruleNote">备注</label>
+        <input id="ruleNote" maxlength="40" placeholder="例如：睡觉休息">
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="button primary" id="saveRule">保存休息规则</button>
+        <button class="button ghost" id="resetRule">取消编辑，新增规则</button>
+      </div>
+
+      <div class="record-list" id="ruleList"></div>
+    </div>
+  </section>
+
+  <!-- ---------- 资料与报价 ---------- -->
+  <section data-panel="profile" style="display:none">
+    <div class="panel">
+      <h2>基本资料</h2>
+      <p class="sub">主页上的信息，在这里随时调整。</p>
+      <div class="grid-2">
+        <div class="field"><label for="pName">名字</label><input id="pName" maxlength="20"></div>
+        <div class="field"><label for="pTagline">一句话简介</label><input id="pTagline" maxlength="40"></div>
+        <div class="field"><label for="pPlatform">接单平台</label><input id="pPlatform" maxlength="20"></div>
+        <div class="field"><label for="pWechat">微信号</label><input id="pWechat" maxlength="40"></div>
+        <div class="field"><label for="pXianyu">闲鱼链接</label><input id="pXianyu" maxlength="200"></div>
+      </div>
+      <div class="field"><label for="pHeadline">首页大标题（换行 = 两行）</label><textarea id="pHeadline" maxlength="60"></textarea></div>
+      <div class="field"><label for="pBio">自我介绍</label><textarea id="pBio" maxlength="600"></textarea></div>
+      <div class="field"><label for="pExperience">陪玩经历 / 曾任职店铺（选填）</label><textarea id="pExperience" maxlength="300"></textarea></div>
+      <div class="field"><label for="pStyles">打法标签（用中文逗号隔开）</label><input id="pStyles"></div>
+      <div class="field"><label for="pAnnouncement">首页公告</label><input id="pAnnouncement" maxlength="120"></div>
+      <div class="check-row"><input type="checkbox" id="pAccepting"><label for="pAccepting">开放接单（关掉后，空闲时段会显示为"停接"）</label></div>
+    </div>
+
+    <div class="panel">
+      <h2>主页图片</h2>
+      <p class="sub">三个都可以留空。选完图片会先自动压缩，<b>再点下面的「保存全部资料」才会生效</b>。</p>
+      <div class="upload-grid">
+        <div class="upload-item">
+          <label>头像</label>
+          <img class="upload-preview" id="avatarPreview" alt="">
+          <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="avatar">清除头像</button>
+        </div>
+        <div class="upload-item">
+          <label>主页背景图（铺满整页，建议横图）</label>
+          <img class="upload-preview wide" id="backgroundPreview" alt="">
+          <input type="file" id="backgroundFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="background">清除背景图</button>
+        </div>
+        <div class="upload-item">
+          <label>首屏图片（放在大标题旁边，建议竖图或方图）</label>
+          <img class="upload-preview" id="heroImagePreview" alt="">
+          <input type="file" id="heroImageFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="heroImage">清除首屏图</button>
+        </div>
+      </div>
+      <div class="field" style="max-width:340px;margin-top:16px">
+        <label for="pBackgroundDim">背景压暗程度：<b id="dimValue">72</b>%（数字越大，文字越清楚）</label>
+        <input type="range" id="pBackgroundDim" min="0" max="90" step="2" value="72">
+      </div>
+      <p class="hint" id="uploadState"></p>
+    </div>
+
+    <div class="panel">
+      <h2>陪玩报价</h2>
+      <p class="sub">主页报价卡片，也是客户预约时能选的"模式"。</p>
+      <div id="priceEditor"></div>
+      <button class="button ghost small" id="addPrice" style="margin-top:10px">+ 增加一档</button>
+    </div>
+
+    <div class="panel">
+      <h2>服务说明</h2>
+      <p class="sub">每行一条，会显示成 01 / 02 / 03 编号列表。</p>
+      <div class="field"><textarea id="pPromises" style="min-height:140px"></textarea></div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="button primary" id="saveProfile">保存全部资料</button>
+      <span class="hint" id="profileState"></span>
+    </div>
+  </section>
+
+  <!-- ---------- 展示墙 ---------- -->
+  <section data-panel="gallery" style="display:none">
+    <div class="panel">
+      <h2>新增展示</h2>
+      <p class="sub">支持 JPG / PNG / WebP，上传前浏览器会自动压缩，请遮住他人隐私信息。</p>
+      <div class="grid-2">
+        <div class="field"><label for="gTitle">标题 / 老板称呼</label><input id="gTitle" maxlength="60" placeholder="例如：今天的满载撤离"></div>
+        <div class="field">
+          <label for="gCategory">分类</label>
+          <select id="gCategory">
+            <option value="screenshot">游戏截图</option>
+            <option value="review">老板评价</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label for="gCaption">说明 / 评价内容</label><textarea id="gCaption" maxlength="300"></textarea></div>
+      <div class="field">
+        <label for="gFile">选择图片</label>
+        <input type="file" id="gFile" accept="image/png,image/jpeg,image/webp">
+      </div>
+      <div class="check-row"><input type="checkbox" id="gVisible" checked><label for="gVisible">保存后立即在首页公开</label></div>
+      <button class="button primary" id="saveGallery" style="margin-top:14px">保存到展示墙</button>
+      <span class="hint" id="galleryHint" style="margin-left:10px"></span>
+    </div>
+
+    <div class="panel">
+      <h2>展示内容</h2>
+      <p class="sub">「隐藏」不删除但首页看不见；「归档」收进归档区，可随时恢复。</p>
+      <div class="check-row" style="margin-bottom:12px">
+        <input type="checkbox" id="showArchived"><label for="showArchived">查看归档</label>
+      </div>
+      <div class="record-list" id="galleryList"></div>
+    </div>
+  </section>
+
+  <!-- ---------- 安全与备份 ---------- -->
+  <section data-panel="settings" style="display:none">
+    <div class="panel">
+      <h2>修改管理密码</h2>
+      <p class="sub">改完密码后，所有已登录的设备都会退出，需要重新登录。</p>
+      <div class="grid-2">
+        <div class="field"><label for="pwCurrent">当前密码</label><input type="password" id="pwCurrent" autocomplete="current-password"></div>
+        <div class="field"><label for="pwNext">新密码（至少 6 位）</label><input type="password" id="pwNext" autocomplete="new-password"></div>
+        <div class="field"><label for="pwConfirm">再次输入新密码</label><input type="password" id="pwConfirm" autocomplete="new-password"></div>
+      </div>
+      <button class="button primary" id="savePassword">更新密码</button>
+      <span class="hint" id="pwState" style="margin-left:10px"></span>
+    </div>
+
+    <div class="panel">
+      <h2>导出业务备份</h2>
+      <p class="sub">下载一个 JSON 文件，里面有你全部的预约时段、休息规则、资料、展示墙数据，<b>连图片也打包在里面</b>。建议每月导出一次，免费的 Render 实例重新部署会清空数据。</p>
+      <a class="button" href="/api/admin/export">下载备份 JSON</a>
+      <span class="hint" id="exportState" style="margin-left:10px"></span>
+      <p class="hint" style="margin-top:14px">
+        为什么要勤备份：免费的 Render 实例<b>每次休眠、重启、重新部署都会清空数据</b>。
+        解决办法见项目里的 <code>DEPLOY.md</code>（保活定时访问 / 挂持久磁盘）。
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2>从备份恢复</h2>
+      <p class="sub">选择之前导出的备份 JSON。<b>会整体覆盖</b>现在的预约时段、休息规则、资料和展示墙（图片会一起恢复）。</p>
+      <div class="field">
+        <label for="importFile">选择备份文件</label>
+        <input type="file" id="importFile" accept="application/json,.json">
+      </div>
+      <button class="button danger" id="importBtn">导入并覆盖</button>
+      <span class="hint" id="importState" style="margin-left:10px"></span>
+    </div>
+
+    <div class="panel">
+      <h2>数据放在哪里</h2>
+      <p class="sub" id="dataHint"></p>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="/static/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 下面这些双花括号占位符由 app.py 用你的资料填进去，微信/QQ 分享出去才有标题和简介 -->
+<title>{{TITLE}}</title>
+<meta name="description" content="{{DESC}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{NAME}} 个人陪玩">
+<meta property="og:title" content="{{TITLE}}">
+<meta property="og:description" content="{{DESC}}">
+<meta property="og:url" content="{{OG_URL}}">
+<meta property="og:image" content="{{OG_IMAGE}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0a0d0b">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎯</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ============ 顶部导航 ============ -->
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="/">陪玩预约 <span id="brandName">·</span></a>
+    <nav class="nav-links">
+      <a href="#schedule">预约时间</a>
+      <a href="#services">陪玩报价</a>
+      <a href="#about">关于我</a>
+      <a href="#gallery">展示墙</a>
+      <a href="/admin">管理终端</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ 首屏 ============ -->
+<section class="hero container">
+  <div class="hero-grid" id="heroGrid">
+    <div class="hero-copy">
+      <span class="eyebrow" id="heroTagline">加载中…</span>
+      <h1 id="heroHeadline">—</h1>
+      <p class="tagline" id="heroSub"></p>
+      <div class="hero-actions">
+        <a class="button primary" href="#schedule">查看预约空档</a>
+        <button class="button" id="copyWechat">复制微信号</button>
+        <span class="status-dot" id="acceptingDot"><i></i><span id="acceptingText">—</span></span>
+      </div>
+      <!-- 微信号直接显示出来：微信内置浏览器经常不允许自动复制，客户还能长按选中 -->
+      <p class="wechat-line" id="wechatLine"></p>
+      <p class="hint" id="announcement" style="margin-top:12px"></p>
+    </div>
+    <!-- 首屏图片：在后台「资料与报价 → 主页图片」里上传，没上传就自动隐藏 -->
+    <div class="hero-media" id="heroMedia" hidden></div>
+  </div>
+</section>
+
+<!-- ============ 时间表 ============ -->
+<section class="section" id="schedule">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-no">01 / AVAILABILITY</div>
+        <h2>你的时间，我来配合。</h2>
+      </div>
+      <p>每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期</p>
+    </div>
+
+    <div class="schedule-card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <strong id="dayTitle">—</strong>
+        <span class="hint" id="dayFree">—</span>
+        <button class="button small ghost" id="refreshSlots" style="margin-left:auto">刷新</button>
+      </div>
+
+      <div class="day-tabs" id="dayTabs"></div>
+      <div class="hour-grid" id="hourGrid"></div>
+
+      <div class="legend">
+        <span><i class="k-free"></i>可预约</span>
+        <span><i class="k-booking"></i>已预约</span>
+        <span><i class="k-rest"></i>休息 / 不接单</span>
+        <span><i class="k-past"></i>已过去</span>
+      </div>
+
+      <div class="selection-bar">
+        <div class="selection-head">
+          <span class="hint">已选时间</span>
+          <strong id="selectedHours">0</strong><span class="hint">小时</span>
+          <span class="hint" id="syncState" style="margin-left:auto"></span>
+        </div>
+        <div class="selected-list" id="selectedList"></div>
+        <div id="selectionHint" class="hint">先点选想玩的时间，连续或分开都可以。</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="button primary" id="nextStep" disabled>下一步：选择模式</button>
+          <button class="button ghost" id="clearSelection">清空</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 报价 ============ -->
+<section class="section" id="services">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-no">02 / CHOOSE YOUR OPERATION</div>
+        <h2>玩的方式你选，陪伴我来。</h2>
+      </div>
+      <p>明码标价 · 个人直约 · 按实际游玩时间计费</p>
+    </div>
+    <div class="cards" id="priceCards"></div>
+
+    <div class="panel" style="margin-top:22px">
+      <h2>下单前，聊清楚这几件事</h2>
+      <ol class="promises" id="promiseList" style="margin-top:16px"></ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 关于我 ============ -->
+<section class="section" id="about">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-no">03 / PLAYER FILE</div>
+        <h2>你好，我是 <span id="aboutName">—</span>。</h2>
+      </div>
+      <p id="aboutPlatform"></p>
+    </div>
+    <div class="about-grid">
+      <div id="avatarBox"></div>
+      <div>
+        <p id="aboutBio" style="white-space:pre-line;margin-top:0"></p>
+        <p class="hint" id="aboutExperience" style="white-space:pre-line"></p>
+        <div class="tags" id="styleTags" style="margin-top:14px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 展示墙 ============ -->
+<section class="section" id="gallery">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-no">04 / FIELD MEMORIES</div>
+        <h2>展示墙。</h2>
+      </div>
+      <p>游戏截图与老板评价</p>
+    </div>
+    <div class="filters" id="galleryFilters">
+      <button class="filter active" data-cat="all">全部</button>
+      <button class="filter" data-cat="screenshot">游戏截图</button>
+      <button class="filter" data-cat="review">老板评价</button>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <p id="footerName"></p>
+    <p>本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。</p>
+  </div>
+</footer>
+
+<!-- ============ 选模式 → 生成预约文案 ============ -->
+<div class="modal-mask" id="modeModal">
+  <div class="modal">
+    <h3>选择模式</h3>
+    <p class="modal-sub">选好后会生成一段预约文案，复制发给我的微信即可。</p>
+    <div class="cards" id="modeCards"></div>
+    <div style="margin-top:18px">
+      <div class="hint" id="estimate"></div>
+      <textarea class="message" id="messageBox" readonly style="margin-top:10px"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="button primary" id="copyMessage">复制这段文案</button>
+      <button class="button ghost" id="closeModal">关闭</button>
+    </div>
+    <p class="hint" style="margin-top:12px">选中只是"意向"，我确认后才会真正锁定那几个小时。</p>
+  </div>
+</div>
+
+<!-- 复制失败时的兜底弹窗（微信内置浏览器很常见），让客户长按手动复制 -->
+<div class="modal-mask" id="copyModal">
+  <div class="modal">
+    <h3>长按下面的文字复制</h3>
+    <p class="modal-sub">你的浏览器不允许网页自动复制，请长按选中后点系统的「复制」。</p>
+    <textarea class="message" id="copyTextBox" readonly style="min-height:130px"></textarea>
+    <div class="modal-actions">
+      <button class="button primary" id="selectAllCopy">全选这段文字</button>
+      <button class="button ghost" id="closeCopyModal">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 图片放大 -->
+<div class="modal-mask" id="imageModal">
+  <div class="modal" style="background:transparent;border:0;padding:0;text-align:center">
+    <img id="imageModalImg" alt="" style="border-radius:12px;max-height:80vh;margin:0 auto">
+    <div class="modal-actions" style="justify-content:center">
+      <button class="button ghost" id="closeImage">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/site.js"></script>
+</body>
+</html>
