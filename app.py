@@ -24,13 +24,16 @@ import json
 import os
 import re
 import secrets
+import socket
 import sqlite3
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urlencode, quote
 
 # ============================================================================
 # 一、配置：改这里就能改变网站行为
@@ -49,8 +52,19 @@ CN = timezone(timedelta(hours=8))
 HOUR_MS = 3600 * 1000          # 一小时的毫秒数
 DAY_MS = 24 * HOUR_MS
 DAYS_SHOWN = 7                 # 时间表显示未来几天（从今天算起）
-MAX_SELECT_HOURS = 72          # 一次最多能勾选多少小时
+MAX_SELECT_HOURS = 72          # 后台一次最多能勾选多少小时
+MAX_BOOK_HOURS = 6             # 客户自助预约一次最多能锁多少小时（比后台严格，防止被人一口气占满）
+BOOK_RATE_MAX = 5              # 同一个 IP 在下面这个时间窗里最多能提交几次预约
+BOOK_RATE_WINDOW = 600         # 预约限流的时间窗（秒）：10 分钟
+NOTIFY_TIMEOUT = 10            # 发通知的超时时间（秒）
 SESSION_HOURS = 12             # 管理员登录后多少小时过期
+
+# 联系方式渠道：客户可以用微信 / 闲鱼 / QQ 留下联系方式，后台按渠道显示
+CONTACT_TYPES = {"wechat": "微信", "xianyu": "闲鱼", "qq": "QQ"}
+CONTACT_DEFAULT = "wechat"     # 老接口没传 contactType 时当成微信
+
+# 星期几的中文写法（datetime.weekday() 是 0=周一，所以顺序从周一开始）
+WEEK_CN = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 # 首次启动时的管理员密码（之后请在"安全与备份"里改掉）
 DEFAULT_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "baixu123"
@@ -102,12 +116,18 @@ CREATE TABLE IF NOT EXISTS store (              -- 键值仓库：放资料、�
     value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS locks (              -- 被锁定的时段（预约 booking / 休息 rest）
-    id     TEXT PRIMARY KEY,
-    kind   TEXT NOT NULL,
-    start  INTEGER NOT NULL,                    -- 起始毫秒时间戳
-    end    INTEGER NOT NULL,                    -- 结束毫秒时间戳
-    client TEXT DEFAULT '',                     -- 老板称呼（仅自己可见）
-    note   TEXT DEFAULT ''                      -- 私密备注
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL,
+    start      INTEGER NOT NULL,                    -- 起始毫秒时间戳
+    end        INTEGER NOT NULL,                    -- 结束毫秒时间戳
+    client     TEXT DEFAULT '',                     -- 老板称呼（仅自己可见）
+    note       TEXT DEFAULT '',                     -- 私密备注
+    source     TEXT DEFAULT 'owner',                -- 谁锁的：owner=自己在后台锁的 / client=客户自助预约
+    mode       TEXT DEFAULT '',                     -- 模式名（客户选的那一档报价）
+    price      INTEGER DEFAULT 0,                   -- 这一段的总价（元，按小时数 × 单价算好）
+    contact    TEXT DEFAULT '',                     -- 客户联系方式（自助预约必填，否则锁了时间也联系不上人）
+    contact_type TEXT DEFAULT 'wechat',             -- 联系方式渠道：wechat 微信 / xianyu 闲鱼 / qq QQ
+    created_at INTEGER DEFAULT 0                    -- 下单时间（毫秒时间戳；老数据是 0）
 );
 CREATE TABLE IF NOT EXISTS rules (              -- 固定休息规则（按周重复）
     id         TEXT PRIMARY KEY,
@@ -147,9 +167,40 @@ def connect():
     return conn
 
 
+def ensure_column(cur, table, column, decl):
+    """
+    给"老数据库"补字段（幂等迁移，重复调用没有任何副作用）。
+
+    为什么必须有它：`CREATE TABLE IF NOT EXISTS` 只负责"表不存在时建表"，
+    表已经存在时它一行都不改。老站点升级上来时，locks 表里没有
+    source / mode / price / contact / created_at 这些新字段，
+    直接查询就会报 "no such column"。
+
+    做法：先 PRAGMA table_info 看一眼字段在不在，缺了才 ALTER TABLE ADD COLUMN。
+    **老数据一条都不会丢**：加一列只是加一列，已有的行原样保留
+    （老记录的 source 会自动填成 'owner'，也就是"老板自己锁的"）。
+    """
+    cols = [row[1] for row in cur.execute("PRAGMA table_info(%s)" % table).fetchall()]
+    if column in cols:
+        return False
+    cur.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, decl))
+    return True
+
+
 def init_db():
     with connect() as conn:
         conn.executescript(SCHEMA)
+        # 老数据库迁移：locks 表后加的字段，缺哪个补哪个（老预约记录原样保留）
+        added = [col for col, decl in (
+            ("source", "TEXT DEFAULT 'owner'"),
+            ("mode", "TEXT DEFAULT ''"),
+            ("price", "INTEGER DEFAULT 0"),
+            ("contact", "TEXT DEFAULT ''"),
+            ("contact_type", "TEXT DEFAULT 'wechat'"),
+            ("created_at", "INTEGER DEFAULT 0"),
+        ) if ensure_column(conn, "locks", col, decl)]
+        if added:
+            print("[迁移] locks 表补上了新字段：%s（老数据没动）" % "、".join(added), flush=True)
         if conn.execute("SELECT 1 FROM store WHERE key='profile'").fetchone() is None:
             conn.execute("INSERT INTO store(key, value) VALUES('profile', ?)",
                          (json.dumps(DEFAULT_PROFILE, ensure_ascii=False),))
@@ -233,6 +284,18 @@ def list_locks():
     with connect() as conn:
         rows = conn.execute("SELECT * FROM locks ORDER BY start").fetchall()
     return [dict(r) for r in rows]
+
+
+# 锁定记录的完整字段（写全再插入，老库补完字段后和新库行为完全一致）
+LOCK_COLUMNS = ("id", "kind", "start", "end", "client", "note",
+                "source", "mode", "price", "contact", "contact_type", "created_at")
+
+
+def insert_lock(conn, **fields):
+    """插一条锁定时段。source='owner' 是自己锁的，'client' 是客户自助预约。"""
+    conn.execute("INSERT INTO locks(%s) VALUES(%s)" % (
+        ", ".join(LOCK_COLUMNS), ", ".join("?" * len(LOCK_COLUMNS))),
+        [fields.get(name) for name in LOCK_COLUMNS])
 
 
 def list_rules():
@@ -356,11 +419,27 @@ def apply_backup(data):
             images += 1
 
     for lk in data.get("locks") or []:
+        # 新字段（source/mode/price/contact/created_at）缺席时用默认值，
+        # 这样"以前导出的老备份"也能正常恢复
+        try:
+            price = max(0, int(lk.get("price") or 0))
+        except (TypeError, ValueError):
+            price = 0
+        try:
+            created_at = int(lk.get("created_at") or 0)
+        except (TypeError, ValueError):
+            created_at = 0
+        contact_type = str(lk.get("contact_type") or "")
+        if contact_type not in CONTACT_TYPES:
+            contact_type = CONTACT_DEFAULT if lk.get("contact") else ""
         try:
             locks.append((str(lk.get("id") or uuid.uuid4().hex),
                           "rest" if lk.get("kind") == "rest" else "booking",
                           int(lk["start"]), int(lk["end"]),
-                          str(lk.get("client") or "")[:40], str(lk.get("note") or "")[:200]))
+                          str(lk.get("client") or "")[:40], str(lk.get("note") or "")[:200],
+                          "client" if lk.get("source") == "client" else "owner",
+                          str(lk.get("mode") or "")[:40], price,
+                          str(lk.get("contact") or "")[:40], contact_type, created_at))
         except (KeyError, TypeError, ValueError):
             continue        # 坏数据跳过，不让整个恢复失败
 
@@ -408,7 +487,9 @@ def apply_backup(data):
         conn.execute("DELETE FROM locks")
         conn.execute("DELETE FROM rules")
         conn.execute("DELETE FROM gallery")
-        conn.executemany("INSERT INTO locks(id, kind, start, end, client, note) VALUES(?,?,?,?,?,?)", locks)
+        conn.executemany("""INSERT INTO locks(id, kind, start, end, client, note, source,
+                            mode, price, contact, contact_type, created_at)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", locks)
         conn.executemany("""INSERT INTO rules(id, days, start_hour, end_hour, from_ts, until_ts,
                             note, enabled) VALUES(?,?,?,?,?,?,?,?)""", rules)
         conn.executemany("""INSERT INTO gallery(id, title, caption, category, image, visible,
@@ -431,6 +512,17 @@ def midnight_ms(ms):
     """把某个时刻归到它当天北京时间的 00:00。"""
     dt = datetime.fromtimestamp(ms / 1000, CN)
     return int(dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+
+
+def cn_label(ms):
+    """把毫秒时间戳写成「10月13日 周一 20:00」（北京时间，前台和文案用的是同一套写法）"""
+    dt = datetime.fromtimestamp(ms / 1000, CN)
+    return "%d月%d日 %s %02d:00" % (dt.month, dt.day, WEEK_CN[dt.weekday()], dt.hour)
+
+
+def cn_hhmm(ms):
+    """只要「20:00」这一截（时间段的结束时间用它）"""
+    return "%02d:00" % datetime.fromtimestamp(ms / 1000, CN).hour
 
 
 def rule_covers(rule, slot_start_ms):
@@ -472,6 +564,23 @@ def slot_status(start_ms, end_ms, now_ms, locks, rules, accepting):
     return "free"
 
 
+def merge_hour_runs(hours):
+    """
+    把一串整点时间戳按"连续"合并成几段，例如
+    [20,21,22, 次日0,次日1] → [[20,21,22], [次日0,次日1]]
+    后台批量锁定和客户自助预约都用它，规则完全一致。
+    """
+    runs, run = [], []
+    for h in sorted(set(hours)):
+        if run and h - run[-1] != HOUR_MS:
+            runs.append(run)
+            run = []
+        run.append(h)
+    if run:
+        runs.append(run)
+    return runs
+
+
 def build_slots(now_ms=None):
     """生成未来 7 天 × 24 小时 = 168 个格子。"""
     now_ms = now_ms or int(time.time() * 1000)
@@ -485,6 +594,112 @@ def build_slots(now_ms=None):
         slots.append({"start": s, "end": e,
                       "status": slot_status(s, e, now_ms, locks, rules, accepting)})
     return slots
+
+
+# ============================================================================
+# 三之二、客户自助预约（点了就锁定）
+#   流程：复查空档 → 把连续的小时合并成几段 → 每段插一条 source='client' 的锁
+#          → 返回一段可以直接发微信的文案（顺便给老板发通知，见第五章）
+# ============================================================================
+
+def contact_label(contact_type):
+    """把渠道代码翻成中文：wechat → 微信 / xianyu → 闲鱼 / qq → QQ"""
+    return CONTACT_TYPES.get(str(contact_type or ""), CONTACT_TYPES[CONTACT_DEFAULT])
+
+
+def booking_message(profile, mode_name, segments, total_hours, total_price, contact, contact_type):
+    """拼一段给客户复制到微信的文案（格式和前台 buildMessage() 保持一致）"""
+    lines = ["%d. %s–%s" % (i, cn_label(seg["start"]), cn_hhmm(seg["end"]))
+             for i, seg in enumerate(segments, 1)]
+    return "\n".join([
+        "你好，%s！想约三角洲行动 %s陪玩。" % (profile.get("name") or "", profile.get("platform") or ""),
+        "模式：%s" % mode_name,
+        "游玩时间（北京时间）：",
+    ] + lines + [
+        "共 %d 段、%d 小时，参考费用 ¥%d。" % (len(segments), total_hours, total_price),
+        "我的%s：%s，加我确认一下就行。" % (contact_label(contact_type), contact),
+    ])
+
+
+def create_booking(hours, mode_name, contact, contact_type, note):
+    """
+    客户自助预约的核心：复查空档 → 分段 → 落库。
+    返回一个字典：成功是 {"ok": True, "locks": [...], ...}；
+    失败是 {"ok": False, "error": "中文原因", "status": 400/409}（前端按 status 处理）。
+    空档复查和写入都在同一把写锁里，两个人同时点也只会有一个成功。
+    """
+    profile = get_profile()
+    mode = next((p for p in (profile.get("prices") or [])
+                 if str(p.get("name")) == mode_name), None)
+    if not mode:
+        return {"ok": False, "error": "没有「%s」这个模式，请刷新页面重新选择。" % mode_name,
+                "status": 400}
+    unit_price = int(round(float(mode.get("price") or 0)))
+
+    with _db_lock, connect() as conn:
+        now_ms = int(time.time() * 1000)
+        # 复查：只有"现在还是 free"的小时才能锁（别的客户可能刚抢走）
+        status_of = {s["start"]: s["status"] for s in build_slots(now_ms)}
+        unknown = [h for h in hours if h not in status_of]
+        if unknown:
+            return {"ok": False, "status": 400,
+                    "error": "所选时间无效（不在可预约的时间表里），请刷新页面重新选择。"}
+        conflicts = [h for h in hours if status_of[h] != "free"]
+        if conflicts:
+            return {"ok": False, "status": 409, "conflicts": conflicts,
+                    "error": "这几段时间刚刚被别人预约了：%s。请重新选择。"
+                             % "、".join(cn_label(h) for h in conflicts)}
+
+        created = [{"start": run[0], "end": run[-1] + HOUR_MS, "hours": len(run),
+                    "price": unit_price * len(run)}
+                   for run in merge_hour_runs(hours)]
+        for seg in created:
+            insert_lock(conn, id=uuid.uuid4().hex, kind="booking", start=seg["start"],
+                        end=seg["end"], client=contact, note=note, source="client",
+                        mode=mode_name, price=seg["price"], contact=contact,
+                        contact_type=contact_type, created_at=now_ms)
+
+    total_hours = sum(seg["hours"] for seg in created)
+    total_price = sum(seg["price"] for seg in created)
+    return {"ok": True, "locks": created, "totalPrice": total_price, "totalHours": total_hours,
+            "mode": mode_name, "contact": contact, "contactType": contact_type,
+            "message": booking_message(profile, mode_name, created, total_hours, total_price,
+                                       contact, contact_type)}
+
+
+def booking_notice(mode_name, segments, total_hours, total_price, contact, contact_type, note):
+    """客户预约成功后，推给老板的内容（标题 + 正文）。标题里带渠道，一眼就知道去哪联系人。"""
+    span = "、".join("%s–%s" % (cn_label(seg["start"]), cn_hhmm(seg["end"])) for seg in segments)
+    content = ("模式：%s\n时间（北京时间）：%s\n共 %d 小时，合计 ¥%d\n联系方式：%s %s\n备注：%s"
+               % (mode_name, span, total_hours, total_price,
+                  contact_label(contact_type), contact, note or "（没填）"))
+    return "新的陪玩预约（%s）" % contact_label(contact_type), content
+
+
+# 预约限流：{IP: [最近几次提交的时间戳]}，只放在内存里，进程一重启就重置（个人站够用了）
+_book_hits = {}
+_book_hits_lock = threading.Lock()
+
+
+def book_rate_limited(ip, now=None):
+    """
+    同一个 IP 在 BOOK_RATE_WINDOW 秒内最多提交 BOOK_RATE_MAX 次预约。
+    返回 (是否被限流, 还要等几秒)。挡的是"有人拿脚本刷预约"，不挡正常客户。
+    """
+    now = now or time.time()
+    with _book_hits_lock:
+        hits = [t for t in _book_hits.get(ip, []) if now - t < BOOK_RATE_WINDOW]
+        if len(hits) >= BOOK_RATE_MAX:
+            _book_hits[ip] = hits
+            return True, int(BOOK_RATE_WINDOW - (now - hits[0])) + 1
+        hits.append(now)
+        _book_hits[ip] = hits
+        # 顺手清理：字典太大的时候，把已经过期的 IP 一次性删掉
+        # （不然有人拿随机 IP 一直刷，这个字典会一直涨）
+        if len(_book_hits) > 5000:
+            for key in [k for k, v in _book_hits.items() if not v or now - v[-1] >= BOOK_RATE_WINDOW]:
+                _book_hits.pop(key, None)
+    return False, 0
 
 
 # ============================================================================
@@ -524,7 +739,132 @@ def session_valid(token):
 
 
 # ============================================================================
-# 五、HTTP 接口
+# 五、通知：有人在前台自助预约时，推一条消息到老板手机
+#   配置存在 store 表里：
+#     notify_channel  off / pushplus / serverchan / webhook
+#     notify_target   token 或 webhook 网址
+#     notify_last     上一次发送结果（JSON），后台拿它显示成功还是失败
+#   发送放在后台线程里，客户提交完立刻拿到响应，不用等网络。
+# ============================================================================
+
+NOTIFY_CHANNELS = ("off", "pushplus", "serverchan", "webhook")
+NOTIFY_NAMES = {"off": "关闭", "pushplus": "PushPlus", "serverchan": "Server酱",
+                "webhook": "自定义 Webhook"}
+
+
+def get_notify_config():
+    """读通知配置 + 上一次的发送结果"""
+    channel = get_store("notify_channel", "off") or "off"
+    if channel not in NOTIFY_CHANNELS:
+        channel = "off"                     # 数据库里是个不认识的渠道时，当成"关闭"
+    try:
+        last = json.loads(get_store("notify_last") or "{}") or {}
+    except ValueError:
+        last = {}
+    return {"channel": channel, "target": get_store("notify_target", "") or "", "last": last}
+
+
+def set_notify_last(ok, detail):
+    """记下这次发送的结果（成功/失败原因 + 时间），后台刷新就能看到"""
+    payload = {"ok": bool(ok), "time": int(time.time() * 1000), "detail": str(detail or "")[:300]}
+    set_store("notify_last", json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def send_notify(channel, target, title, content):
+    """
+    真正把通知发出去，返回 (是否成功, 说明文字)。
+    三种渠道都只用标准库 urllib.request，统一 10 秒超时。
+    """
+    if channel == "off":
+        return False, "通知渠道是「关闭」，不用发。"
+    if not target:
+        return False, "还没填 token 或 Webhook 网址。"
+    try:
+        if channel == "pushplus":
+            payload = json.dumps({"token": target, "title": title,
+                                  "content": content, "template": "txt"}).encode("utf-8")
+            req = urllib.request.Request("https://www.pushplus.plus/send", data=payload,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT) as resp:
+                raw = resp.read().decode("utf-8", "replace")
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                return False, "PushPlus 返回的内容看不懂：%s" % raw[:80]
+            if str(data.get("code")) == "200":
+                return True, "PushPlus 已发送"
+            return False, "PushPlus 返回 code=%s %s" % (data.get("code"),
+                                                        str(data.get("msg") or "")[:60])
+
+        if channel == "serverchan":
+            # Server酱（Turbo 版）的接口长这样：https://sc.ftqq.com/<SendKey>.send
+            url = "https://sc.ftqq.com/%s.send" % quote(target, safe="")
+            body = urlencode({"text": title, "desp": content}).encode("utf-8")
+            req = urllib.request.Request(url, data=body, headers={
+                "Content-Type": "application/x-www-form-urlencoded"})
+            with urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT) as resp:
+                raw = resp.read().decode("utf-8", "replace")
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                return False, "Server酱 返回的内容看不懂：%s" % raw[:80]
+            code = data.get("code")
+            if code is None:
+                code = data.get("errno")        # 老接口用 errno
+            if str(code) == "0":
+                return True, "Server酱 已发送"
+            return False, "Server酱 返回：%s" % raw[:80]
+
+        if channel == "webhook":
+            if not str(target).lower().startswith(("http://", "https://")):
+                return False, "Webhook 网址要以 http:// 或 https:// 开头。"
+            payload = json.dumps({"title": title, "content": content,
+                                  "text": "%s\n%s" % (title, content)}).encode("utf-8")
+            req = urllib.request.Request(target, data=payload,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT) as resp:
+                resp.read()
+                return True, "Webhook 已发送（HTTP %s）" % resp.status
+
+        return False, "不认识的通知渠道：%s" % channel
+    except urllib.error.HTTPError as e:
+        # 403 / 401 多半是 token 不对，404 多半是网址写错
+        return False, "HTTP %s（token 或网址可能不对）" % e.code
+    except socket.timeout:
+        return False, "超时（%d 秒没有响应）" % NOTIFY_TIMEOUT
+    except urllib.error.URLError as e:
+        if isinstance(getattr(e, "reason", None), socket.timeout):
+            return False, "超时（%d 秒没有响应）" % NOTIFY_TIMEOUT
+        return False, "连不上：%s" % str(getattr(e, "reason", e))[:120]
+    except Exception as e:                  # 兜底：发通知出任何问题都不能影响客户下单
+        return False, "%s: %s" % (type(e).__name__, str(e)[:120])
+
+
+def notify_owner(title, content):
+    """
+    给老板发通知。
+    **放在后台线程里发**：客户提交完立刻拿到"锁定成功"，不用等这个网络请求。
+    发完把结果写进 notify_last；没配置渠道就静默跳过（不覆盖上次的测试结果）。
+    """
+    cfg = get_notify_config()
+    if cfg["channel"] == "off" or not cfg["target"]:
+        return False
+
+    def worker():
+        try:
+            ok, detail = send_notify(cfg["channel"], cfg["target"], title, content)
+        except Exception as e:              # pragma: no cover - 兜底
+            ok, detail = False, "%s: %s" % (type(e).__name__, e)
+        set_notify_last(ok, detail)
+        print("[通知] %s：%s" % ("成功" if ok else "失败", detail), flush=True)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return True
+
+
+# ============================================================================
+# 六、HTTP 接口
 # ============================================================================
 
 def escape_html(text):
@@ -650,6 +990,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"error": "登录已失效，请重新输入管理员密码。"}, 401)
         return False
 
+    def client_ip(self):
+        """
+        取客户真实 IP（限流用）。
+        部署在 PythonAnywhere / Render 后面时，请求都是代理转发过来的，
+        self.client_address 永远是代理的地址（那样所有人共用一个限流名额），
+        所以优先看代理写进来的 X-Forwarded-For 的第一段。
+        """
+        forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        if re.fullmatch(r"[0-9A-Fa-f:.]{3,45}", forwarded or ""):
+            return forwarded
+        return (self.client_address[0] if self.client_address else "") or "unknown"
+
     def log_message(self, fmt, *args):        # 让日志干净一点
         print("[%s] %s" % (datetime.now(CN).strftime("%H:%M:%S"), fmt % args))
 
@@ -740,6 +1092,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin":
             if not self.require_admin():
                 return
+            notify = get_notify_config()
             return self.send_json({
                 "profile": get_profile(),
                 "profileRevision": get_revision(),
@@ -747,6 +1100,9 @@ class Handler(BaseHTTPRequestHandler):
                 "dataDir": DATA_DIR,   # 让后台显示"数据放在哪里"
                 "schedule": {"locks": list_locks(), "rules": list_rules()},
                 "gallery": list_gallery(),
+                "notifyChannel": notify["channel"],     # 预约通知：渠道 / 目标 / 上次结果
+                "notifyTarget": notify["target"],
+                "notifyLast": notify["last"],
             })
 
         if path == "/api/admin/export":
@@ -792,6 +1148,10 @@ class Handler(BaseHTTPRequestHandler):
             self.write_body(payload)
             return
 
+        # 客户自助预约：公开接口，不用登录 —— 点了就把时间锁上（见 api_book）
+        if path == "/api/book":
+            return self.api_book(body)
+
         if not self.require_admin():
             return
 
@@ -805,6 +1165,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.admin_gallery_create(body)
         if path == "/api/admin/password":
             return self.admin_password(body)
+        if path == "/api/admin/notify":
+            return self.admin_notify(body)
+        if path == "/api/admin/notify-test":
+            return self.admin_notify_test(body)
 
         return self.send_json({"error": "接口不存在。"}, 404)
 
@@ -865,6 +1229,67 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True, "gallery": list_gallery()})
         return self.send_json({"error": "接口不存在。"}, 404)
 
+    # ---------- 客户自助预约 ----------
+
+    def api_book(self, body):
+        """
+        POST /api/book —— 客户在前台点「立即锁定时间」时调它。
+        请求：{"hours":[毫秒时间戳...], "mode":"机密 · 零号大坝", "contact":"联系方式",
+               "contactType":"wechat|xianyu|qq", "note":"备注"}
+        成功：{"ok":true, "locks":[…], "totalPrice":45, "totalHours":3, "mode":"…", "message":"微信文案"}
+        失败状态码：400 参数不对 / 409 这几格被抢走了 / 429 提交太频繁
+        """
+        if not isinstance(body, dict):
+            return self.send_json({"error": "请用 JSON 格式提交预约。"}, 400)
+
+        # 1. 限流：先挡住"拿脚本刷预约"的（不影响正常客户，10 分钟内 5 次）
+        limited, wait = book_rate_limited(self.client_ip())
+        if limited:
+            return self.send_json({"error": "提交太频繁了，请 %d 秒后再试。" % wait}, 429)
+
+        # 2. 时间：必须非空、都是整点、不超过 MAX_BOOK_HOURS
+        raw_hours = body.get("hours")
+        if not isinstance(raw_hours, list) or not raw_hours:
+            return self.send_json({"error": "请先选择要预约的时间。"}, 400)
+        try:
+            hours = sorted({int(h) for h in raw_hours})
+        except (TypeError, ValueError):
+            return self.send_json({"error": "所选时间无效，请刷新页面重新选择。"}, 400)
+        if any(h % HOUR_MS != 0 for h in hours):
+            return self.send_json({"error": "所选时间无效，请按整点选择。"}, 400)
+        if len(hours) > MAX_BOOK_HOURS:
+            return self.send_json(
+                {"error": "一次最多预约 %d 小时，请分两次提交。" % MAX_BOOK_HOURS}, 400)
+
+        # 3. 联系方式必填：锁了时间却联系不上人，等于白锁
+        #    渠道可以是微信 / 闲鱼 / QQ；老前端没传 contactType 时按微信处理
+        raw_type = str(body.get("contactType") or "").strip()
+        contact_type = raw_type or CONTACT_DEFAULT
+        if contact_type not in CONTACT_TYPES:
+            return self.send_json(
+                {"error": "联系方式渠道只能是微信 / 闲鱼 / QQ 这三种。"}, 400)
+        contact = str(body.get("contact") or "").strip()[:40]
+        if not 2 <= len(contact) <= 40:
+            return self.send_json(
+                {"error": "请填写你的联系方式（微信 / 闲鱼 / QQ），2–40 个字符，不然我加不上你。"}, 400)
+
+        mode_name = str(body.get("mode") or "").strip()[:40]
+        note = str(body.get("note") or "").strip()[:200]
+
+        # 4. 复查空档 → 合并连续小时 → 落库（全在 create_booking 里，带写锁，防两个人抢同一格）
+        result = create_booking(hours, mode_name, contact, contact_type, note)
+        if not result.get("ok"):
+            payload = {"error": result.get("error") or "预约没有成功，请重试。"}
+            if result.get("conflicts"):
+                payload["conflicts"] = result["conflicts"]
+            return self.send_json(payload, result.get("status") or 400)
+
+        # 5. 通知老板（后台线程发，客户不用等）
+        title, content = booking_notice(result["mode"], result["locks"], result["totalHours"],
+                                        result["totalPrice"], contact, contact_type, note)
+        notify_owner(title, content)
+        return self.send_json(result)
+
     # ---------- 管理动作 ----------
 
     def admin_schedule(self, body):
@@ -879,11 +1304,14 @@ class Handler(BaseHTTPRequestHandler):
                 note = str(body.get("note") or "")[:200]
                 lock_id = body.get("id")
                 if lock_id:
+                    # 编辑已有锁定：source / mode / price / contact 原样保留
+                    # （客户自助预约被你在后台改时间时，来源标记不该丢）
                     conn.execute("UPDATE locks SET kind=?, start=?, end=?, client=?, note=? WHERE id=?",
                                  (kind, start, end, client, note, lock_id))
                 else:
-                    conn.execute("INSERT INTO locks(id, kind, start, end, client, note) VALUES(?,?,?,?,?,?)",
-                                 (uuid.uuid4().hex, kind, start, end, client, note))
+                    insert_lock(conn, id=uuid.uuid4().hex, kind=kind, start=start, end=end,
+                                client=client, note=note, source="owner", mode="", price=0,
+                                contact="", contact_type="", created_at=int(time.time() * 1000))
 
             elif action == "save-batch":
                 hours = sorted({int(h) for h in (body.get("hours") or [])})
@@ -897,18 +1325,12 @@ class Handler(BaseHTTPRequestHandler):
                 existing = [dict(r) for r in conn.execute("SELECT * FROM locks").fetchall()]
                 fresh = [h for h in hours
                          if not any(lk["start"] < h + HOUR_MS and h < lk["end"] for lk in existing)]
-                # 把连续的时段合并成一段，看起来更清爽
-                runs, run = [], []
-                for h in fresh:
-                    if run and h - run[-1] != HOUR_MS:
-                        runs.append(run)
-                        run = []
-                    run.append(h)
-                if run:
-                    runs.append(run)
-                for r in runs:
-                    conn.execute("INSERT INTO locks(id, kind, start, end, client, note) VALUES(?,?,?,?,?,?)",
-                                 (uuid.uuid4().hex, kind, r[0], r[-1] + HOUR_MS, client, note))
+                # 把连续的时段合并成一段，看起来更清爽（和客户自助预约用的是同一个函数）
+                created = int(time.time() * 1000)
+                for run in merge_hour_runs(fresh):
+                    insert_lock(conn, id=uuid.uuid4().hex, kind=kind, start=run[0],
+                                end=run[-1] + HOUR_MS, client=client, note=note, source="owner",
+                                mode="", price=0, contact="", contact_type="", created_at=created)
 
             elif action == "remove-lock":
                 conn.execute("DELETE FROM locks WHERE id=?", (body.get("id"),))
@@ -1018,15 +1440,48 @@ class Handler(BaseHTTPRequestHandler):
         # 不用手动清会话：Cookie 的签名密钥就是密码哈希，改了密码旧 Cookie 自动失效
         return self.send_json({"ok": True})
 
+    def admin_notify(self, body):
+        """保存预约通知的渠道与目标（token 或 webhook 网址）"""
+        channel = str(body.get("channel") or "off")
+        if channel not in NOTIFY_CHANNELS:
+            return self.send_json({"error": "不支持的通知渠道。"}, 400)
+        target = str(body.get("target") or "").strip()[:200]
+        if channel != "off" and not target:
+            return self.send_json({"error": "请填写 token 或 Webhook 网址。"}, 400)
+        if channel == "webhook" and not target.lower().startswith(("http://", "https://")):
+            return self.send_json({"error": "Webhook 网址要以 http:// 或 https:// 开头。"}, 400)
+        set_store("notify_channel", channel)
+        set_store("notify_target", target)
+        return self.send_json({"ok": True, "notifyChannel": channel, "notifyTarget": target,
+                               "notifyLast": get_notify_config()["last"]})
+
+    def admin_notify_test(self, body):
+        """
+        用当前配置发一条测试通知。
+        这里**同步发**（不像客户预约那样丢到后台线程），因为你点了按钮就要立刻看到结果。
+        """
+        cfg = get_notify_config()
+        if cfg["channel"] == "off":
+            return self.send_json({"ok": False, "detail": "通知渠道是「关闭」，先选一个渠道再点测试。",
+                                   "notifyLast": cfg["last"]})
+        ok, detail = send_notify(cfg["channel"], cfg["target"], "陪玩站测试通知",
+                                 "你在微信里看到这条，就说明预约通知配置成功了。\n"
+                                 "（这是后台「发送测试通知」发的）")
+        last = set_notify_last(ok, detail)
+        return self.send_json({"ok": ok, "detail": detail, "notifyLast": last})
+
 
 def main():
     init_db()
+    notify = get_notify_config()
     # flush=True：日志立刻输出。Render 的日志窗口是按行读的，不加这句会"卡住不显示"
     print("=" * 60, flush=True)
     print(" 陪玩预约站已启动", flush=True)
     print(" 本地访问：http://127.0.0.1:%d" % PORT, flush=True)
     print(" 管理后台：http://127.0.0.1:%d/admin" % PORT, flush=True)
     print(" 数据文件：%s" % DB_PATH, flush=True)
+    print(" 预约通知：%s" % (NOTIFY_NAMES.get(notify["channel"], notify["channel"])
+                          + ("（已配置，客户预约会推送）" if notify["target"] else "（未配置）")), flush=True)
     print("=" * 60, flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 

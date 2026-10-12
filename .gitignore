@@ -1,6 +1,7 @@
 # 运行数据（数据库 + 上传的图片）不要提交到 Git
 data/
 .testdata/
+.testdata-migrate/          # 迁移测试用的临时库（测试结束会自动删掉）
 screenshots/
 
 # Python

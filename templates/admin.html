@@ -285,6 +285,32 @@
     </div>
 
     <div class="panel">
+      <h2>预约通知</h2>
+      <p class="sub">客户在前台自助预约后，立刻推一条消息到你手机。不配置也能正常接单，只是不会收到提醒。</p>
+      <div class="grid-2">
+        <div class="field">
+          <label for="notifyChannel">通知渠道</label>
+          <select id="notifyChannel">
+            <option value="off">关闭</option>
+            <option value="pushplus">PushPlus（微信推送）</option>
+            <option value="serverchan">Server酱</option>
+            <option value="webhook">自定义 Webhook</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="notifyTarget">Token 或网址</label>
+          <input id="notifyTarget" maxlength="200" placeholder="PushPlus 的 token，或 Webhook 网址">
+        </div>
+      </div>
+      <p class="hint">PushPlus：微信扫码登录 pushplus.plus 后复制 token（一串 32 位字符）。</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+        <button class="button primary" id="saveNotify">保存通知设置</button>
+        <button class="button ghost" id="testNotify">发送测试通知</button>
+      </div>
+      <p class="hint" id="notifyState"></p>
+    </div>
+
+    <div class="panel">
       <h2>数据放在哪里</h2>
       <p class="sub" id="dataHint"></p>
     </div>

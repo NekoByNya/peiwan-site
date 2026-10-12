@@ -8,7 +8,18 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
 const CN_OFFSET = 8 * 3600 * 1000;   // 北京时间 = UTC+8
 const HOUR = 3600 * 1000;
-const MAX_HOURS = 72;
+const MAX_HOURS = 6;                 // 一次最多能选几小时（和后端 MAX_BOOK_HOURS 保持一致）
+
+// 联系方式渠道：文案里、后台里都用这三个中文写法
+const CONTACT_TEXT = { wechat: '微信', xianyu: '闲鱼', qq: 'QQ' };
+const CONTACT_PLACEHOLDER = {
+  wechat: '你的微信号',
+  xianyu: '你的闲鱼用户名',
+  qq: '你的 QQ 号',
+};
+
+// 选时间那一行的默认提示语（被抢单/提示后要还原成这句，所以抽出来）
+const SELECTION_HINT = `先点选想玩的时间，连续或分开都可以（一次最多 ${MAX_HOURS} 小时）。`;
 
 const state = {
   profile: null,
@@ -35,7 +46,9 @@ const hhmm = (ms) => pad(cn(ms).h) + ':00';
 const dateLabel = (ms) => `${cn(ms).m}月${cn(ms).d}日`;
 const fullLabel = (ms) => `${dateLabel(ms)} ${WEEK[cn(ms).w]} ${hhmm(ms)}`;
 
-/* ---------- 通用请求：把网络错误翻译成人话 ---------- */
+/* ---------- 通用请求：把网络错误翻译成人话 ----------
+   出错时会把 HTTP 状态码和响应内容挂在 Error 上（err.status / err.data），
+   预约那一段要靠它区分"被抢走了 409 / 太频繁 429 / 参数不对 400"。 */
 async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -47,10 +60,15 @@ async function api(path, options = {}) {
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
-    if (!res.ok) throw new Error(data.error || `请求失败（${res.status}）`);
+    if (!res.ok) {
+      const err = new Error(data.error || `请求失败（${res.status}）`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data;
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('连接网站超时，请稍后刷新。');
+    if (err.name === 'AbortError') throw new Error('连接网站超时，请刷新后重试。');
     if (err instanceof TypeError) throw new Error('连接网站失败，请检查网络后重试。');
     throw err;
   } finally {
@@ -247,9 +265,8 @@ function toggleHour(start) {
   } else {
     if (state.selected.size >= MAX_HOURS) return toast(`一次最多选择 ${MAX_HOURS} 小时`, true);
     state.selected.add(start);
-  }
-  $('#selectionHint').className = 'hint';
-  $('#selectionHint').textContent = '先点选想玩的时间，连续或分开都可以。';
+  }  $('#selectionHint').className = 'hint';
+  $('#selectionHint').textContent = SELECTION_HINT;
   renderSchedule();
   renderSelection();
 }
@@ -269,7 +286,7 @@ async function verifySelected() {
   return true;
 }
 
-/* ---------- 生成预约文案 ---------- */
+/* ---------- 生成"只咨询、不锁定"的预约文案（次路径用） ---------- */
 function buildMessage() {
   const p = state.profile;
   const price = (p.prices || [])[state.modeIndex] || { name: '待定', price: 0 };
@@ -287,11 +304,25 @@ function buildMessage() {
   const lines = segments.map((seg, i) =>
     `${i + 1}. ${fullLabel(seg[0])}–${hhmm(seg[seg.length - 1] + HOUR)}`).join('\n');
 
+  const contact = $('#bookContact') ? $('#bookContact').value.trim() : '';
+  const type = currentContactType();
+
   return `你好，${p.name}！想约三角洲行动 ${p.platform || ''}陪玩。\n`
     + `模式：${price.name}\n`
     + `游玩时间（北京时间）：\n${lines}\n`
     + `共 ${segments.length} 段、${total} 小时，参考费用 ¥${fee}。\n`
-    + `以上时段一起确认即可，麻烦确认后我再下单。`;
+    + (contact ? `我的${CONTACT_TEXT[type]}：${contact}\n` : '')
+    + `（这段只是咨询，时间还没锁定，麻烦你确认后帮我锁上。）`;
+}
+
+/* ---------- 联系方式渠道 ---------- */
+function currentContactType() {
+  const el = $('#bookContactType');
+  return el && CONTACT_TEXT[el.value] ? el.value : 'wechat';
+}
+
+function applyContactPlaceholder() {
+  $('#bookContact').placeholder = CONTACT_PLACEHOLDER[currentContactType()] || '你的联系方式';
 }
 
 function renderModeModal() {
@@ -309,9 +340,106 @@ function renderModeModal() {
   const price = prices[state.modeIndex];
   const total = state.selected.size;
   $('#estimate').textContent = price
-    ? `已选 ${total} 小时 · 参考费用 ¥${((Number(price.price) || 0) * total).toFixed(2)}（按实际游玩时间结算）`
+    ? `已选 ${total} 小时 · 参考费用 ¥${((Number(price.price) || 0) * total).toFixed(2)}`
+      + `（按实际游玩时间结算，一次最多 ${MAX_HOURS} 小时）`
     : '';
+  applyContactPlaceholder();
   $('#messageBox').value = buildMessage();
+}
+
+/* ---------- 主路径：立即锁定时间 ---------- */
+async function bookNow() {
+  const price = (state.profile.prices || [])[state.modeIndex];
+  const hours = Array.from(state.selected).sort((a, b) => a - b);
+  if (!price) return toast('还没有设置报价，请先在后台添加。', true);
+  if (!hours.length) return toast('请先选择时间', true);
+
+  const contact = $('#bookContact').value.trim();
+  const contactType = currentContactType();
+  const box = $('#bookState');
+  if (contact.length < 2 || contact.length > 40) {
+    box.className = 'hint error';
+    box.textContent = '请填写你的联系方式（微信 / 闲鱼 / QQ），2–40 个字符，不然我加不上你。';
+    toast('请先填写联系方式', true);
+    return;
+  }
+
+  const btn = $('#bookNow');
+  btn.disabled = true;
+  btn.textContent = '正在锁定…';
+  box.className = 'hint';
+  box.textContent = '';
+  try {
+    const data = await api('/api/book', {
+      method: 'POST',
+      body: JSON.stringify({
+        hours, mode: price.name, contact, contactType, note: $('#bookNote').value.trim(),
+      }),
+    });
+    // 成功：清空选择、刷新时间表（那几格现在已经是「已预约」），再弹出成功页
+    state.selected.clear();
+    await loadPublic();
+    $('#modeModal').classList.remove('open');
+    renderDone(data);
+    $('#doneModal').classList.add('open');
+    toast('时间已锁定，记得把文案发给我');
+  } catch (err) {
+    handleBookError(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '立即锁定时间';
+  }
+}
+
+/** 预约失败时的提示：409 被抢走 / 429 太频繁 / 400 参数不对 / 其它（网络） */
+function handleBookError(err) {
+  const box = $('#bookState');
+  const detail = err.data || {};
+  if (err.status === 409) {
+    // 把已经被抢走的小时从选中列表里去掉，客户直接重新选就行
+    (detail.conflicts || []).forEach((h) => state.selected.delete(h));
+    renderSchedule();
+    renderSelection();
+    box.className = 'hint error';
+    box.textContent = err.message;
+    toast('有几段时间刚被别人约走了，请重新选择', true);
+    syncStatuses();
+    return;
+  }
+  if (err.status === 429) {
+    box.className = 'hint error';
+    box.textContent = err.message || '提交太频繁，请过几分钟再试。';
+    toast('提交太频繁，请稍后再试', true);
+    return;
+  }
+  if (err.status === 400) {
+    box.className = 'hint error';
+    box.textContent = err.message;
+    toast(err.message, true);
+    return;
+  }
+  toast(`${err.message}（可以再点一次「立即锁定时间」试试）`, true);
+}
+
+/** 锁定成功页：写清楚锁了哪几段、总价，并保留一键复制文案 */
+function renderDone(data) {
+  const p = state.profile || {};
+  $('#doneLocks').innerHTML = (data.locks || []).map((seg) => `
+    <article class="record">
+      <span class="badge ok">已锁定</span>
+      <div class="grow">
+        <strong>${fullLabel(seg.start)} – ${hhmm(seg.end)}</strong>
+        <p>${seg.hours} 小时 · ¥${seg.price}</p>
+      </div>
+    </article>`).join('');
+  $('#doneSummary').innerHTML =
+    `模式：<b>${escapeHtml(data.mode)}</b> · 共 <b>${data.totalHours}</b> 小时`
+    + ` · 合计 <b>¥${data.totalPrice}</b> · 联系方式：<b>${CONTACT_TEXT[data.contactType] || '微信'} `
+    + `${escapeHtml(data.contact || '')}</b>`;
+  $('#doneNote').textContent = p.wechat
+    ? `我已收到通知，会尽快加你确认（我的微信号：${p.wechat}）。`
+    : '我已收到通知，会尽快加你确认。';
+  $('#doneMessage').value = data.message || '';
 }
 
 /* ---------- 展示墙 ---------- */
@@ -419,10 +547,30 @@ function bindEvents() {
     renderModeModal();
   });
 
-  $('#copyMessage').addEventListener('click', () => copyText($('#messageBox').value, '预约文案已复制，发给我即可'));
+  // 换渠道 → 换输入框提示语；填联系方式 → 文案里也跟着更新
+  $('#bookContactType').addEventListener('change', () => {
+    applyContactPlaceholder();
+    $('#messageBox').value = buildMessage();
+  });
+  $('#bookContact').addEventListener('input', () => {
+    $('#messageBox').value = buildMessage();
+  });
+
+  // 主路径：立即锁定时间
+  $('#bookNow').addEventListener('click', bookNow);
+
+  // 次路径：只复制文案，不锁定（文案里会写明"时间还没锁定"）
+  $('#copyMessage').addEventListener('click', () => copyText($('#messageBox').value, '咨询文案已复制，发给我即可'));
   $('#closeModal').addEventListener('click', () => $('#modeModal').classList.remove('open'));
   $('#modeModal').addEventListener('click', (e) => {
     if (e.target === $('#modeModal')) $('#modeModal').classList.remove('open');
+  });
+
+  // 锁定成功页
+  $('#copyDoneMessage').addEventListener('click', () => copyText($('#doneMessage').value, '文案已复制，发给我即可'));
+  $('#closeDone').addEventListener('click', () => $('#doneModal').classList.remove('open'));
+  $('#doneModal').addEventListener('click', (e) => {
+    if (e.target === $('#doneModal')) $('#doneModal').classList.remove('open');
   });
 
   $('#galleryFilters').addEventListener('click', (e) => {

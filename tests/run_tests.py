@@ -103,7 +103,14 @@ def main():
                      "TEST_DATA_DIR": TEST_DATA, "PYTHONUNBUFFERED": "1"})
         code = subprocess.call([sys.executable, os.path.join(ROOT, "tests", "test_api.py")], env=tenv)
 
-        # ---------------- 第二阶段：真的重启一次 ----------------
+        # ---------------- 第二阶段：客户自助预约 + 通知 + 数据库迁移 ----------------
+        print("\n" + "=" * 60)
+        print(" 自助预约测试（客户点一下就锁定 + 老板收到通知）")
+        print("=" * 60, flush=True)
+        bcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_booking.py")], env=tenv)
+
+        # ---------------- 第三阶段：真的重启一次 ----------------
         print("\n" + "=" * 60)
         print(" 重启测试（模拟 Render 休眠 / 重新部署后的重启）")
         print("=" * 60, flush=True)
@@ -134,7 +141,7 @@ def main():
         if kept:
             check("时段内容完全一致", kept[0]["start"] == target and kept[0]["note"] == "重启后应该还在")
 
-        # ---------------- 第三阶段：并发读写 ----------------
+        # ---------------- 第四阶段：并发读写 ----------------
         print("\n" + "=" * 60)
         print(" 并发测试（客户看时间表的同时，你在后台锁定/取消时段）")
         print("=" * 60, flush=True)
@@ -145,7 +152,7 @@ def main():
         check("并发下没有报错", ccode == 0)
 
         print("\n本阶段：通过 %d 项，失败 %d 项" % (ok, fail))
-        return code or ccode or (1 if fail else 0)
+        return code or bcode or ccode or (1 if fail else 0)
     finally:
         stop_server(proc)
         shutil.rmtree(TEST_DATA, ignore_errors=True)

@@ -12,6 +12,8 @@ const DAY = 24 * HOUR;
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const pad = (n) => String(n).padStart(2, '0');
 
+const CONTACT_TEXT = { wechat: '微信', xianyu: '闲鱼', qq: 'QQ' };   // 联系方式渠道的中文名
+
 const state = {
   profile: null,
   revision: 1,
@@ -20,6 +22,9 @@ const state = {
   gallery: [],
   publicSlots: [],
   lastExportAt: 0,
+  notifyChannel: 'off',
+  notifyTarget: '',
+  notifyLast: {},
   date: null,          // 当前查看的日期（毫秒，北京时间 00:00）
   batch: new Set(),    // 多选批量锁定的整点
   editingLockId: null,
@@ -45,6 +50,11 @@ const msFromDateValue = (v) => {
 };
 const timeLabel = (h) => `${pad(h)}:00`;
 const titleOf = (ms) => { const p = cnParts(ms); return `${p.m}月${p.d}日 ${WEEK[p.w]}`; };
+const dateTimeLabel = (ms) => {
+  const p = cnParts(ms);
+  const mi = new Date(ms + CN_OFFSET).getUTCMinutes();
+  return `${p.m}月${p.d}日 ${pad(p.h)}:${pad(mi)}`;
+};
 
 /* ---------- 通用 ---------- */
 async function api(path, options = {}) {
@@ -141,6 +151,9 @@ async function loadAll() {
   state.revision = admin.profileRevision;
   state.lastExportAt = admin.lastExportAt || 0;
   state.dataDir = admin.dataDir || '';
+  state.notifyChannel = admin.notifyChannel || 'off';
+  state.notifyTarget = admin.notifyTarget || '';
+  state.notifyLast = admin.notifyLast || {};
   state.locks = admin.schedule.locks;
   state.rules = admin.schedule.rules;
   state.gallery = admin.gallery;
@@ -168,6 +181,7 @@ function renderAll() {
   fillProfileForm();
   renderGallery();
   renderBackupState();
+  renderNotify();
   renderDataHint();
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
@@ -199,12 +213,54 @@ function renderStats() {
   const todaySlots = state.publicSlots.filter((s) => s.start >= today && s.start < today + DAY);
   const free = todaySlots.filter((s) => s.status === 'free').length;
   const activeRules = state.rules.filter((r) => r.enabled).length;
+  // 客户自助预约（还没开始的）：这些人多半还在等你加微信确认
+  const clientBookings = state.locks.filter(
+    (l) => l.source === 'client' && l.kind === 'booking' && l.end > Date.now());
 
   $('#stats').innerHTML = `
     <div class="stat"><span>今日预约</span><strong>${bookings.length}<small>单</small></strong></div>
+    <div class="stat"><span>客户自助预约（待确认）</span><strong>${clientBookings.length}<small>单</small></strong></div>
     <div class="stat"><span>今日可预约</span><strong>${free}<small>小时</small></strong></div>
     <div class="stat"><span>启用中的休息规则</span><strong>${activeRules}<small>条</small></strong></div>
     <div class="stat"><span>展示墙已公开</span><strong>${state.gallery.filter((g) => g.visible && !g.archived).length}<small>条</small></strong></div>`;
+}
+
+/* ---------- 预约通知设置 ---------- */
+const NOTIFY_PLACEHOLDER = {
+  off: '关闭通知时不用填',
+  pushplus: 'PushPlus 的 token（32 位字符）',
+  serverchan: 'Server酱的 SendKey（SCT 开头）',
+  webhook: 'https://你的地址/hook',
+};
+
+function renderNotify() {
+  $('#notifyChannel').value = state.notifyChannel || 'off';
+  $('#notifyTarget').value = state.notifyTarget || '';
+  applyNotifyPlaceholder();
+  renderNotifyState(state.notifyLast);
+}
+
+function applyNotifyPlaceholder() {
+  const channel = $('#notifyChannel').value;
+  $('#notifyTarget').placeholder = NOTIFY_PLACEHOLDER[channel] || 'Token 或网址';
+}
+
+function renderNotifyState(last) {
+  const el = $('#notifyState');
+  if (!el) return;
+  if (!last || !last.time) {
+    el.className = 'hint';
+    el.textContent = '还没有发送过通知。配好渠道后点「发送测试通知」验证一下。';
+    return;
+  }
+  const when = dateTimeLabel(last.time);
+  if (last.ok) {
+    el.className = 'hint ok';
+    el.textContent = `上次发送成功（${when}）：${last.detail || ''}`;
+  } else {
+    el.className = 'hint error';
+    el.textContent = `上次发送失败（${when}）：${last.detail || '未知原因'}`;
+  }
 }
 
 /* ---------- 时间格子 ---------- */
@@ -305,15 +361,34 @@ function renderLockList() {
     const label = `${titleOf(l.start)} ${timeLabel(cnParts(l.start).h)} – ${
       l.end - midnightOf(l.end) === 0 && cnParts(l.end).h === 0
         ? timeLabel(24) : timeLabel(cnParts(l.end).h)}`;
+    // 来源徽章：客户自助预约（醒目色）/ 自己锁定
+    const isClient = l.source === 'client';
+    const badge = isClient
+      ? '<span class="badge client">客户自助预约</span>'
+      : '<span class="badge">自己锁定</span>';
+    // 第二行：模式 · 价格 · 联系方式 / 老板称呼 · 备注 · 下单时间
+    const brief = [];
+    if (l.mode) brief.push(`模式：${escapeHtml(l.mode)}`);
+    if (Number(l.price) > 0) brief.push(`<b class="money">¥${Number(l.price)}</b>`);
+    if (isClient) {
+      brief.push(l.contact
+        ? `${CONTACT_TEXT[l.contact_type] || '微信'}：${escapeHtml(l.contact)}`
+        : '客户没留联系方式');
+    } else {
+      brief.push(l.client ? `老板：${escapeHtml(l.client)}` : '未填写称呼');
+      if (l.contact) brief.push(`${CONTACT_TEXT[l.contact_type] || '微信'}：${escapeHtml(l.contact)}`);
+    }
+    if (l.note) brief.push(`备注：${escapeHtml(l.note)}`);
+    if (l.created_at) brief.push(`下单时间：${dateTimeLabel(l.created_at)}`);
     return `<article class="record">
+      ${badge}
       <span class="badge ${l.kind === 'booking' ? 'warn' : ''}">${l.kind === 'booking' ? '预约' : '休息'}</span>
       <div class="grow">
         <strong>${escapeHtml(label)}</strong>
-        <p>${escapeHtml(l.client ? '老板：' + l.client : '未填写称呼')}${
-          l.note ? ' · ' + escapeHtml(l.note) : ''}</p>
+        <p>${brief.join(' · ')}</p>
       </div>
       <button class="button small ghost" data-edit-lock="${l.id}">编辑</button>
-      <button class="button small danger" data-del-lock="${l.id}">取消锁定</button>
+      <button class="button small danger" data-del-lock="${l.id}">取消</button>
     </article>`;
   }).join('') : '<div class="empty-state">这一天还没有预约或临时休息。</div>';
 }
@@ -614,13 +689,13 @@ $('#lockList').addEventListener('click', async (e) => {
   if (edit) return editLock(edit.dataset.editLock);
   const del = e.target.closest('[data-del-lock]');
   if (!del) return;
-  if (!confirm('取消后这段时间会重新开放，确定吗？')) return;
+  if (!confirm('取消后这段时间会重新开放（客户自助预约的取消后也会变成可预约），确定吗？')) return;
   await api('/api/admin/schedule', {
     method: 'POST', body: JSON.stringify({ action: 'remove-lock', id: del.dataset.delLock }),
   });
   await loadSchedule();
   await refreshPublicSlots();
-  toast('已取消锁定');
+  toast('已取消，这段时间重新开放');
 });
 
 /* --- 休息规则 --- */
@@ -824,6 +899,45 @@ $('#savePassword').addEventListener('click', async () => {
   } catch (err) {
     $('#pwState').textContent = err.message;
     $('#pwState').className = 'hint error';
+  }
+});
+
+/* --- 预约通知 --- */
+$('#notifyChannel').addEventListener('change', applyNotifyPlaceholder);
+
+$('#saveNotify').addEventListener('click', async () => {
+  try {
+    const data = await api('/api/admin/notify', {
+      method: 'POST',
+      body: JSON.stringify({
+        channel: $('#notifyChannel').value,
+        target: $('#notifyTarget').value.trim(),
+      }),
+    });
+    state.notifyChannel = data.notifyChannel;
+    state.notifyTarget = data.notifyTarget;
+    state.notifyLast = data.notifyLast || state.notifyLast;
+    renderNotifyState(state.notifyLast);
+    toast('通知设置已保存');
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#testNotify').addEventListener('click', async () => {
+  const btn = $('#testNotify');
+  btn.disabled = true;
+  btn.textContent = '正在发送…';
+  try {
+    const data = await api('/api/admin/notify-test', { method: 'POST', body: JSON.stringify({}) });
+    state.notifyLast = data.notifyLast || state.notifyLast;
+    renderNotifyState(state.notifyLast);
+    toast(data.ok ? '测试通知已发出，去手机上看看' : `发送失败：${data.detail}`, !data.ok);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送测试通知';
   }
 });
 

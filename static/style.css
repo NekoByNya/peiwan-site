@@ -346,6 +346,12 @@ textarea.message {
 .badge.ok { color: var(--accent); border-color: rgba(198, 240, 74, .4); }
 .badge.warn { color: var(--accent2); border-color: rgba(255, 179, 71, .4); }
 .badge.off { opacity: .7; }
+/* 客户自助预约：用醒目的青色，和"自己锁定"的灰色一眼区分开 */
+.badge.client {
+  color: #6fd3ff; border-color: rgba(111, 211, 255, .5);
+  background: rgba(111, 211, 255, .12); font-weight: 700;
+}
+.money { color: var(--accent); }
 
 .thumb { width: 76px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 

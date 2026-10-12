@@ -28,6 +28,13 @@ from urllib.parse import quote  # noqa: E402
 
 import app as site                     # noqa: E402  这就是你的 app.py
 
+# ★ 关键一步：建库建表。
+#   app.py 里的 init_db() 只在它的 main() 里调用，而 main() 只在"直接运行 app.py"
+#   时才会执行。PythonAnywhere 是"导入"这个模块来跑网站的，永远不会走 main()，
+#   所以必须在这里自己建一次库，否则任何要读数据库的页面（比如主页）都会 500。
+#   init_db() 是幂等的（CREATE TABLE IF NOT EXISTS），重复调用没有副作用。
+site.init_db()
+
 
 class _Capture:
     """假装的"socket 写口"：把服务器写出去的响应字节收集起来（关闭时不清空）"""

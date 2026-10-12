@@ -91,7 +91,7 @@
           <span class="hint" id="syncState" style="margin-left:auto"></span>
         </div>
         <div class="selected-list" id="selectedList"></div>
-        <div id="selectionHint" class="hint">先点选想玩的时间，连续或分开都可以。</div>
+        <div id="selectionHint" class="hint">先点选想玩的时间，连续或分开都可以（一次最多 6 小时）。</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="button primary" id="nextStep" disabled>下一步：选择模式</button>
           <button class="button ghost" id="clearSelection">清空</button>
@@ -167,21 +167,58 @@
   </div>
 </footer>
 
-<!-- ============ 选模式 → 生成预约文案 ============ -->
+<!-- ============ 选模式 → 立即锁定时间 / 只复制文案 ============ -->
 <div class="modal-mask" id="modeModal">
   <div class="modal">
     <h3>选择模式</h3>
-    <p class="modal-sub">选好后会生成一段预约文案，复制发给我的微信即可。</p>
+    <p class="modal-sub">选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。</p>
     <div class="cards" id="modeCards"></div>
     <div style="margin-top:18px">
       <div class="hint" id="estimate"></div>
-      <textarea class="message" id="messageBox" readonly style="margin-top:10px"></textarea>
+      <div class="grid-2" style="margin-top:12px;align-items:end">
+        <div class="field" style="margin:0">
+          <label for="bookContactType">联系方式</label>
+          <select id="bookContactType">
+            <option value="wechat">微信</option>
+            <option value="xianyu">闲鱼</option>
+            <option value="qq">QQ</option>
+          </select>
+          <span class="hint">填哪个都行，方便联系。</span>
+        </div>
+        <div class="field" style="margin:0">
+          <label for="bookContact">你的联系方式（必填）</label>
+          <input id="bookContact" maxlength="40" placeholder="你的微信号">
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label for="bookNote">备注（选填）</label>
+        <input id="bookNote" maxlength="200" placeholder="例如：想玩大坝、晚上可能晚到 10 分钟">
+      </div>
+      <textarea class="message" id="messageBox" readonly style="margin-top:12px"></textarea>
     </div>
     <div class="modal-actions">
-      <button class="button primary" id="copyMessage">复制这段文案</button>
+      <button class="button primary" id="bookNow">立即锁定时间</button>
+      <button class="button ghost" id="copyMessage">只复制文案，不锁定</button>
       <button class="button ghost" id="closeModal">关闭</button>
     </div>
-    <p class="hint" style="margin-top:12px">选中只是"意向"，我确认后才会真正锁定那几个小时。</p>
+    <p class="hint" style="margin-top:12px">⚠️ 点「立即锁定时间」后，这几个小时<b>会立刻被锁定</b>，别人就点不动了；如需取消请微信联系我。</p>
+    <p class="hint error" id="bookState"></p>
+  </div>
+</div>
+
+<!-- ============ 锁定成功 ============ -->
+<div class="modal-mask" id="doneModal">
+  <div class="modal">
+    <h3>时间已锁定 ✅</h3>
+    <p class="modal-sub" id="doneNote">我已收到通知，会尽快加你确认。</p>
+    <div class="record-list" id="doneLocks"></div>
+    <p class="hint" id="doneSummary" style="margin:12px 0 0"></p>
+    <textarea class="message" id="doneMessage" readonly style="margin-top:10px"></textarea>
+    <div class="modal-actions">
+      <button class="button primary" id="copyDoneMessage">复制文案发给我</button>
+      <button class="button ghost" id="closeDone">知道了</button>
+    </div>
+    <p class="hint" style="margin-top:12px">如需取消或改时间，请微信联系我（微信号在页面顶部），或者在文案里告诉我。</p>
   </div>
 </div>
 
