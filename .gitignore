@@ -2,7 +2,9 @@
 data/
 .testdata/
 .testdata-migrate/          # 迁移测试用的临时库（测试结束会自动删掉）
+.testdata-zones/            # 两级分区迁移测试用的临时库（同上）
 screenshots/
+_shots2/                    # 给主人看的截图和它们的演示数据（临时目录，跑完自己删）
 
 # Python
 __pycache__/

@@ -49,6 +49,7 @@ if not IS_LOCAL and os.environ.get("ALLOW_REMOTE_TESTS") != "1":
     print("=" * 70)
     sys.exit(2)
 
+ZONE = ""            # 由 main_tests() 在开头填上（"第一个可见分区"的 id）
 jar = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 ok = fail = 0
@@ -95,6 +96,15 @@ def free_run(count):
 def status_map():
     pub = json.loads(call("/api/public")[1])
     return {s["start"]: s["status"] for s in pub["slots"]}
+
+
+def first_zone_id():
+    """两级分区：预约必须带 zone。测试统一用"第一个可见分区"（公开接口的默认分区）。"""
+    try:
+        pub = json.loads(call("/api/public")[1])
+        return pub["zone"]["id"]
+    except Exception:
+        return ""
 
 
 # ============================================================================
@@ -146,6 +156,8 @@ def wait_hook(count, timeout=8.0):
 def main_tests():
     # ---------- 准备：登录 + 关掉通知，避免测试期间往外发消息 ----------
     print("=== 0. 准备 ===")
+    ZONE = first_zone_id()
+    check("拿到默认分区（预约必须带 zone）", bool(ZONE), "zone=%s" % ZONE)
     s, b = call("/api/auth", "POST", {"password": PASSWORD})
     check("管理员登录", s == 200, b.strip()[:80])
     pub = json.loads(call("/api/public")[1])
@@ -159,7 +171,7 @@ def main_tests():
     hours = free_run(3)
     check("能找到 3 个连续的空闲小时", bool(hours), str(hours))
     s, b = call("/api/book", "POST",
-                {"hours": hours, "mode": mode["name"], "contact": "wx_auto_001",
+                {"zone": ZONE, "hours": hours, "mode": mode["name"], "contact": "wx_auto_001",
                  "contactType": "wechat", "note": "自动测试用"},
                 ip="198.51.100.11")
     data = json.loads(b) if s == 200 else {}
@@ -184,7 +196,7 @@ def main_tests():
     # 不连续的两个小时 → 应该拆成 2 段
     gap = free_run(3)
     s, b = call("/api/book", "POST",
-                {"hours": [gap[0], gap[2]], "mode": mode["name"], "contact": "wx_auto_002"},
+                {"zone": ZONE, "hours": [gap[0], gap[2]], "mode": mode["name"], "contact": "wx_auto_002"},
                 ip="198.51.100.12")
     data2 = json.loads(b) if s == 200 else {}
     check("不连续的两小时拆成 2 段",
@@ -198,7 +210,7 @@ def main_tests():
     for i, (ctype, cname) in enumerate((("xianyu", "闲鱼"), ("qq", "QQ"))):
         hour = free_run(1)
         s, b = call("/api/book", "POST",
-                    {"hours": hour, "mode": mode["name"], "contact": "%s_auto_%d" % (ctype, i),
+                    {"zone": ZONE, "hours": hour, "mode": mode["name"], "contact": "%s_auto_%d" % (ctype, i),
                      "contactType": ctype}, ip="198.51.100.4%d" % i)
         d = json.loads(b) if s == 200 else {}
         check("contactType=%s 可以通过" % ctype, s == 200 and d.get("contactType") == ctype,
@@ -206,83 +218,108 @@ def main_tests():
         check("文案里带上渠道中文名「%s」" % cname, cname in (d.get("message") or ""),
               (d.get("message") or "").replace("\n", " / ")[:90])
     s, b = call("/api/book", "POST",
-                {"hours": free_run(1), "mode": mode["name"], "contact": "wx_bad_type",
+                {"zone": ZONE, "hours": free_run(1), "mode": mode["name"], "contact": "wx_bad_type",
                  "contactType": "telegram"}, ip="198.51.100.49")
     check("contactType 非法值 → 400", s == 400 and "微信" in b, b.strip()[:110])
 
     print("=== 1c. 游戏名：一套代码能开任何游戏的预约站 ===")
-    # 备份原资料，测完还原（不然会影响后面的测试）
+    # 两级分区之后，预约文案里的游戏名来自**分区自己的资料**（profile.game），
+    # 全局资料里的 game / platform 只是"分区没填时的兜底"。
+    # 所以这一段改成改"分区"的游戏名 —— 这正是主人在后台会做的事。
     admin = json.loads(call("/api/admin")[1])
     original = dict(admin["profile"])
     cur_rev = [admin["profileRevision"]]
+    zone0 = next(z for z in admin["zones"] if z["id"] == admin["zoneBriefs"][0]["id"])
+    zone_id = zone0["id"]
+    zone_original = dict(zone0["profile"])
 
     def save_profile(**changes):
+        """改全局资料里的字段（老的「资料与报价 → 全局资料」通道）"""
         prof = dict(original)
         prof.update(changes)
         s, b = call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur_rev[0]})
         if s == 200:
-            cur_rev[0] = json.loads(b).get("revision", cur_rev[0] + 1) \
-                if isinstance(json.loads(b), dict) else cur_rev[0] + 1
+            cur_rev[0] = json.loads(b).get("profileRevision", cur_rev[0])
+        return s
+
+    def save_zone(**changes):
+        """改分区自己的资料（游戏名 / 接单平台都在这里）"""
+        prof = json.loads(call("/api/admin")[1])["zones"]
+        cur = next(z for z in prof if z["id"] == zone_id)
+        merged = dict(cur["profile"])
+        merged.update(changes)
+        s, _b = call("/api/admin/zones", "POST",
+                     {"action": "profile", "id": zone_id, "profile": merged})
         return s
 
     def book_and_get_message(ip):
         s, b = call("/api/book", "POST",
-                    {"hours": free_run(1), "mode": mode["name"], "contact": "wx_game_test",
-                     "contactType": "wechat"}, ip=ip)
+                    {"zone": zone_id, "hours": free_run(1), "mode": mode["name"],
+                     "contact": "wx_game_test", "contactType": "wechat"}, ip=ip)
         return s, (json.loads(b).get("message") or "") if s == 200 else ""
 
-    s = save_profile(game="永劫无间", platform="PC 电脑端")
-    check("后台能保存「游戏名」字段", s == 200, "status=%s" % s)
+    s = save_zone(game="永劫无间", platform="PC 电脑端")
+    check("后台能保存分区的「游戏名」字段", s == 200, "status=%s" % s)
     s, msg = book_and_get_message("198.51.100.61")
-    check("预约文案里出现游戏名「永劫无间」", s == 200 and "想约永劫无间 PC 电脑端陪玩" in msg,
+    check("预约文案里出现分区自己的游戏名「永劫无间」",
+          s == 200 and "想约永劫无间 PC 电脑端陪玩" in msg,
           msg.replace("\n", " / ")[:90])
 
-    save_profile(game="", platform="PC 电脑端")
+    save_zone(game="", platform="PC 电脑端")
     s, msg = book_and_get_message("198.51.100.62")
     check("游戏名留空时只说平台，不会出现「想约 陪玩」",
           s == 200 and "想约PC 电脑端陪玩" in msg and "想约 " not in msg,
           msg.replace("\n", " / ")[:90])
 
-    save_profile(game="", platform="")
+    save_zone(game="", platform="")
     s, msg = book_and_get_message("198.51.100.63")
     check("游戏名和平台都留空 → 用兜底话术",
           s == 200 and "我想约你的陪玩服务" in msg, msg.replace("\n", " / ")[:90])
 
+    # 兜底规则：分区没填游戏名时，全局资料里的「游戏名」还能顶上（老后台通道不失效）
+    s = save_profile(game="永劫无间")
+    s, msg = book_and_get_message("198.51.100.64")
+    check("分区没填时，全局资料的「游戏名」仍然生效（兜底）",
+          s == 200 and "永劫无间" in msg, msg.replace("\n", " / ")[:90])
+
+    save_zone(**{k: zone_original.get(k, "") for k in ("game", "platform")})
     save_profile(**{k: original.get(k, "") for k in ("game", "platform")})
-    check("测试后资料已还原", json.loads(call("/api/admin")[1])["profile"].get("game") == original.get("game"),
-          "game=%r" % json.loads(call("/api/admin")[1])["profile"].get("game"))
+    restored = next(z for z in json.loads(call("/api/admin")[1])["zones"] if z["id"] == zone_id)
+    check("测试后分区资料已还原",
+          restored["profile"].get("game") == zone_original.get("game"),
+          "game=%r" % restored["profile"].get("game"))
 
     print("=== 2. 参数校验（每条都要有清楚的中文错误） ===")
     s, b = call("/api/book", "POST",
-                {"hours": free_run(1), "mode": mode["name"], "contact": ""}, ip="198.51.100.21")
+                {"zone": ZONE, "hours": free_run(1), "mode": mode["name"], "contact": ""}, ip="198.51.100.21")
     check("没填联系方式 → 400", s == 400 and "联系方式" in b and "微信" in b, b.strip()[:110])
     s, b = call("/api/book", "POST",
-                {"hours": free_run(1), "mode": mode["name"], "contact": "x"}, ip="198.51.100.22")
+                {"zone": ZONE, "hours": free_run(1), "mode": mode["name"], "contact": "x"}, ip="198.51.100.22")
     check("联系方式太短 → 400", s == 400, b.strip()[:100])
     s, b = call("/api/book", "POST",
-                {"hours": [], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.23")
+                {"zone": ZONE, "hours": [], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.23")
     check("小时数为空 → 400", s == 400 and "时间" in b, b.strip()[:100])
     s, b = call("/api/book", "POST",
-                {"mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.24")
+                {"zone": ZONE, "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.24")
     check("完全不传 hours → 400", s == 400, b.strip()[:100])
     s, b = call("/api/book", "POST",
-                {"hours": ["坏数据"], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.25")
+                {"zone": ZONE, "hours": ["坏数据"], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.25")
     check("hours 不是数字 → 400", s == 400, b.strip()[:100])
     s, b = call("/api/book", "POST",
-                {"hours": [1, 2], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.26")
+                {"zone": ZONE, "hours": [1, 2], "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.26")
     check("时间戳不是整点/不在时间表里 → 400", s == 400, b.strip()[:100])
     seven = free_run(7)                    # 7 个真格子，超过 MAX_BOOK_HOURS=6
     s, b = call("/api/book", "POST",
-                {"hours": seven, "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.27")
+                {"zone": ZONE, "hours": seven, "mode": mode["name"], "contact": "wx_auto"}, ip="198.51.100.27")
     check("超过 6 小时 → 400", s == 400 and "6" in b, b.strip()[:110])
     s, b = call("/api/book", "POST",
-                {"hours": free_run(1), "mode": "不存在的模式", "contact": "wx_auto"},
+                {"zone": ZONE, "hours": free_run(1), "mode": "不存在的模式", "contact": "wx_auto"},
                 ip="198.51.100.28")
     check("模式不存在 → 400", s == 400 and "模式" in b, b.strip()[:110])
 
     exactly6 = free_run(6)
     s, b = call("/api/book", "POST",
-                {"hours": exactly6, "mode": mode["name"], "contact": "wx_auto_6hours"},
+                {"zone": ZONE, "hours": exactly6, "mode": mode["name"], "contact": "wx_auto_6hours"},
                 ip="198.51.100.29")
     check("正好 6 小时可以通过（边界值）", s == 200 and json.loads(b).get("totalHours") == 6,
           "status=%s" % s)
@@ -293,7 +330,7 @@ def main_tests():
          {"action": "save-lock", "start": pair[0], "end": pair[0] + HOUR,
           "kind": "booking", "client": "老板先锁的", "note": "冲突测试"})
     s, b = call("/api/book", "POST",
-                {"hours": pair, "mode": mode["name"], "contact": "wx_conflict"},
+                {"zone": ZONE, "hours": pair, "mode": mode["name"], "contact": "wx_conflict"},
                 ip="198.51.100.31")
     body = json.loads(b) if b.strip().startswith("{") else {}
     check("已经被锁的小时 → 409", s == 409, "status=%s %s" % (s, b.strip()[:90]))
@@ -308,13 +345,13 @@ def main_tests():
     for i in range(6):
         hour = free_run(1)
         s, _b = call("/api/book", "POST",
-                     {"hours": hour, "mode": mode["name"], "contact": "wx_rate_%d" % i},
+                     {"zone": ZONE, "hours": hour, "mode": mode["name"], "contact": "wx_rate_%d" % i},
                      ip="203.0.113.77")
         codes.append(s)
     check("前 5 次正常（200）", codes[:5] == [200] * 5, str(codes))
     check("第 6 次被限流（429）", codes[5] == 429, str(codes))
     s, _b = call("/api/book", "POST",
-                 {"hours": free_run(1), "mode": mode["name"], "contact": "wx_other"},
+                 {"zone": ZONE, "hours": free_run(1), "mode": mode["name"], "contact": "wx_other"},
                  ip="203.0.113.78")
     check("换个 IP 不受影响（限流是按客户算的）", s == 200, "status=%s" % s)
 
@@ -398,7 +435,7 @@ def main_tests():
         Hook.received.clear()
         one = free_run(1)                  # 注意：hours 必须是"列表"，直接用这个返回值
         s, _b = call("/api/book", "POST",
-                     {"hours": one, "mode": mode["name"], "contact": "xy_notice_9",
+                     {"zone": ZONE, "hours": one, "mode": mode["name"], "contact": "xy_notice_9",
                       "contactType": "xianyu", "note": "通知测试"},
                      ip="198.51.100.91")
         check("预约本身成功（没有因为发通知而变慢/失败）", s == 200, "status=%s" % s)

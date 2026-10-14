@@ -1,6 +1,6 @@
 /* ==========================================================================
    全站样式（一个文件搞定，没有框架、没有构建步骤）
-   配色：深色战术风 + 荧光绿点缀
+   配色：深色底 + 每个分区自己的主色
    ========================================================================== */
 
 :root {
@@ -11,7 +11,14 @@
   --line: rgba(255, 255, 255, .09);
   --text: #e9efea;
   --muted: #8e9a92;
+  /* 下面三个是"主色"。分区页会被服务端注入的 <style> 覆盖成该分区的主色
+     （见 app.py 的 theme_style()）：
+       --accent     高亮色（按钮、边框、强调文字）
+       --accent-rgb "198, 240, 74" 这种分量写法，给 rgba() 用
+       --accent-ink 主色底上的文字颜色（亮底用深字，暗底用白字） */
   --accent: #c6f04a;
+  --accent-rgb: 198, 240, 74;
+  --accent-ink: #10160f;
   --accent2: #ffb347;
   --danger: #ff6b5e;
   --radius: 14px;
@@ -36,6 +43,10 @@ body {
 
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
+
+/* ⚠️ 必须放在 img 的 display 之后：否则 img{display:block} 会盖掉 hidden 属性，
+   没上传二维码时就会渲染出一个空白方框（曾经真的发生过） */
+[hidden] { display: none !important; }
 
 .container { width: min(1080px, 100% - 32px); margin: 0 auto; }
 
@@ -84,7 +95,7 @@ img { max-width: 100%; display: block; }
 .eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 11.5px; letter-spacing: .22em; color: var(--accent);
-  border: 1px solid rgba(198, 240, 74, .3); border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 999px;
   padding: 5px 12px; text-transform: uppercase;
 }
 .hero h1 {
@@ -109,7 +120,7 @@ img { max-width: 100%; display: block; }
 }
 .wechat-line b {
   color: var(--accent); font-size: 16px; letter-spacing: .04em;
-  background: rgba(198, 240, 74, .1); border: 1px dashed rgba(198, 240, 74, .45);
+  background: rgba(var(--accent-rgb), .1); border: 1px dashed rgba(var(--accent-rgb), .45);
   border-radius: 8px; padding: 3px 10px; user-select: all;   /* 长按一次选中整个微信号 */
 }
 .wechat-tip { font-size: 12px; opacity: .8; }
@@ -121,8 +132,8 @@ img { max-width: 100%; display: block; }
   padding: 11px 18px; border-radius: 10px; font-size: 14px; cursor: pointer;
   transition: .18s; font-family: inherit;
 }
-.button:hover { border-color: rgba(198, 240, 74, .5); transform: translateY(-1px); }
-.button.primary { background: var(--accent); color: #10160f; border-color: var(--accent); font-weight: 700; }
+.button:hover { border-color: rgba(var(--accent-rgb), .5); transform: translateY(-1px); }
+.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 .button.primary:hover { filter: brightness(1.06); }
 .button.ghost { background: transparent; }
 .button.full { width: 100%; }
@@ -160,17 +171,17 @@ img { max-width: 100%; display: block; }
   font-family: inherit;
 }
 .hour-cell small { font-size: 10.5px; opacity: .9; }
-.hour-cell.free { color: var(--text); border-color: rgba(198, 240, 74, .3); }
-.hour-cell.free:hover { background: rgba(198, 240, 74, .12); }
+.hour-cell.free { color: var(--text); border-color: rgba(var(--accent-rgb), .3); }
+.hour-cell.free:hover { background: rgba(var(--accent-rgb), .12); }
 .hour-cell.booking { color: var(--accent2); border-color: rgba(255, 179, 71, .32); cursor: not-allowed; }
 .hour-cell.rest { color: #7f8c81; cursor: not-allowed; }
 .hour-cell.past, .hour-cell.closed { opacity: .42; cursor: not-allowed; }
-.hour-cell.selected { background: var(--accent); color: #10160f; border-color: var(--accent); font-weight: 700; }
+.hour-cell.selected { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.legend .k-free { background: rgba(198, 240, 74, .55); }
+.legend .k-free { background: rgba(var(--accent-rgb), .55); }
 .legend .k-booking { background: var(--accent2); }
 .legend .k-rest { background: #55605a; }
 .legend .k-past { background: #303833; }
@@ -199,7 +210,7 @@ img { max-width: 100%; display: block; }
   padding: 22px; display: flex; flex-direction: column; gap: 10px; cursor: default;
 }
 .card.selectable { cursor: pointer; transition: .16s; }
-.card.selectable:hover { border-color: rgba(198, 240, 74, .45); transform: translateY(-2px); }
+.card.selectable:hover { border-color: rgba(var(--accent-rgb), .45); transform: translateY(-2px); }
 .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .card .no { font-size: 11.5px; letter-spacing: .18em; color: var(--accent); }
 .card h3 { margin: 0; font-size: 20px; }
@@ -217,7 +228,7 @@ img { max-width: 100%; display: block; }
 }
 .promises li::before {
   content: counter(p, decimal-leading-zero); position: absolute; left: 0; top: 1px;
-  font-size: 12px; color: var(--accent); border: 1px solid rgba(198, 240, 74, .3);
+  font-size: 12px; color: var(--accent); border: 1px solid rgba(var(--accent-rgb), .3);
   border-radius: 7px; padding: 2px 7px;
 }
 
@@ -242,10 +253,24 @@ img { max-width: 100%; display: block; }
 .gallery-item h4 { margin: 0 0 4px; font-size: 14.5px; }
 .gallery-item p { margin: 0; font-size: 12.5px; color: var(--muted); white-space: pre-wrap; }
 
+/* ★ 有外链的图：整张图是一个新窗口打开的链接（B 站视频 / 你做的网站），右上角带角标 */
+.gallery-item .gallery-link { display: block; position: relative; }
+.gallery-item .gallery-link img { cursor: pointer; }
+.gallery-link-badge {
+  position: absolute; right: 8px; top: 8px; z-index: 2;
+  background: rgba(4, 6, 5, .74); color: var(--accent);
+  border: 1px solid rgba(var(--accent-rgb), .5); border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; font-weight: 700; pointer-events: none;
+  backdrop-filter: blur(3px);
+}
+.gallery-item .gallery-link:hover img { filter: brightness(1.08); }
+
 .empty-state {
   border: 1px dashed var(--line); border-radius: var(--radius);
   padding: 34px; text-align: center; color: var(--muted); font-size: 14px;
 }
+/* "没有待确认的预约 ✓" 那种"一切正常"的空状态：用主色描边，看着就安心 */
+.empty-state.ok { border-color: rgba(var(--accent-rgb), .45); color: var(--accent); }
 
 /* ---------- 底部 / 弹窗 / 提示 ---------- */
 .footer { border-top: 1px solid var(--line); padding: 30px 0 40px; color: var(--muted); font-size: 12.5px; }
@@ -311,7 +336,94 @@ textarea.message {
   padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
   color: var(--muted); cursor: pointer; font-size: 13.5px; font-family: inherit;
 }
-.tab.active { color: #10160f; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.tab.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+
+/* ---------- ★ 今日待办条（标签栏上方那一条通栏） ----------
+   每天要干的三件事压成一行：几单要打、几个客户要催、几单待确认。
+   有数字的项用醒目的红/橙，0 的项整块灰掉 —— 一眼就知道今天有没有事。 */
+.todo-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;
+  font-size: 14px; background: var(--panel); border: 1px solid var(--line);
+}
+.todo-bar .todo-head { color: var(--muted); font-size: 13.5px; }
+.todo-bar .todo-sep { color: var(--line); }
+.todo-bar .todo-clear { color: var(--accent); font-size: 13.5px; }
+.todo-item {
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px; color: var(--muted); font-family: inherit;
+}
+.todo-item.hot { color: #ffb347; border-color: rgba(255, 179, 71, .55); background: rgba(255, 179, 71, .1); }
+.todo-item.hot:hover { border-color: #ffb347; }
+.todo-item.zero { color: var(--muted); opacity: .55; }
+
+/* ---------- ★ 待确认处理台（第二刀） ---------- */
+.pending-panel { border-color: rgba(255, 179, 71, .55); box-shadow: 0 0 0 1px rgba(255, 179, 71, .12) inset; }
+.pending-panel h2 { display: flex; align-items: center; gap: 10px; }
+.pending-record { border-color: rgba(255, 179, 71, .35); background: rgba(255, 179, 71, .06); }
+.pending-record .pending-wait { color: #ffb347; }
+.auto-release-box {
+  margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line);
+}
+.auto-release-box input[type=number] {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 9px; padding: 7px 10px; font: inherit; font-size: 13.5px;
+}
+.badge.link { color: var(--accent); border-color: rgba(var(--accent-rgb), .45); }
+.gallery-edit-box {
+  margin-top: 10px; padding: 12px; border: 1px dashed var(--line);
+  border-radius: 10px; background: var(--panel);
+}
+
+/* ---------- ★ 收入标签页（第三刀：钱从哪来、该推什么） ---------- */
+/* 顶部那一大块：左边"本月收入 ¥1240 / 比上月 +18%"，右边「+ 记一笔」。
+   大字用主色 —— 后台里只有它和待确认那条通栏是"要先看到"的。 */
+.income-head {
+  display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 14px;
+}
+.income-head .spacer { margin-left: auto; }
+.income-label { margin: 0; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+.income-big { display: block; font-size: 42px; line-height: 1.15; color: var(--accent); font-weight: 800; }
+.income-mom { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+/* 环比用主色/红字：涨了是好事（主色），跌了不吓人（灰），只有真跌才红 */
+.income-mom.up { color: var(--accent); }
+.income-mom.down { color: var(--danger); }
+
+/* 按大类分的小卡：和客户页那 4 张统计卡是同一套（.stat），这里只管里面的排版 */
+.income-cat { display: flex; flex-direction: column; gap: 2px; }
+.income-cat small { margin-left: 0; }
+.income-cat .money { font-size: 20px; font-weight: 800; }
+
+/* 两个排行榜的每一行：名字在左、钱在右 */
+.rank-row { display: flex; align-items: center; gap: 10px; }
+.rank-row .rank-no {
+  width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.rank-row .grow { flex: 1; min-width: 0; }
+.rank-row strong { font-size: 14px; }
+.rank-row .rank-money { color: var(--accent); font-weight: 700; white-space: nowrap; }
+
+/* 来源小徽章：确认预约（青，和"客户自助预约"一个色系）/ 续费（橙）/ 手动补记（灰蓝） */
+.badge.src-booking { color: #6fd3ff; border-color: rgba(111, 211, 255, .5); background: rgba(111, 211, 255, .12); }
+.badge.src-renew { color: var(--accent2); border-color: rgba(255, 179, 71, .45); background: rgba(255, 179, 71, .1); }
+.badge.src-manual { color: #b9a6ff; border-color: rgba(185, 166, 255, .45); background: rgba(185, 166, 255, .1); }
+
+/* 弹窗里"输入框 + 单位"并排（续费的「元」就是这么摆的） */
+.inline-field { display: flex; align-items: center; gap: 8px; }
+.inline-field input { flex: 1; min-width: 0; }
+
+/* 空状态里的"三个记账入口"清单：左边一个点，右边一句话 */
+.empty-state .empty-steps { text-align: left; display: inline-block; margin: 0; padding: 0; list-style: none; }
+.empty-state .empty-steps li { margin: 5px 0; display: block; }
+.empty-state .empty-steps li::before { content: '·'; margin-right: 6px; color: var(--accent); }
+/* 收入页的流水表下面那行空状态：它本身是个 <p class="hint">，这里补上虚线框，
+   让它看起来像"这一块现在是空的"，而不是一行普通的小字 */
+.hint.empty-state { color: var(--muted); padding: 20px; margin: 0; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
@@ -343,7 +455,7 @@ textarea.message {
 .record strong { font-size: 14px; }
 .record p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 .badge { font-size: 11.5px; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--line); color: var(--muted); }
-.badge.ok { color: var(--accent); border-color: rgba(198, 240, 74, .4); }
+.badge.ok { color: var(--accent); border-color: rgba(var(--accent-rgb), .4); }
 .badge.warn { color: var(--accent2); border-color: rgba(255, 179, 71, .4); }
 .badge.off { opacity: .7; }
 /* 客户自助预约：用醒目的青色，和"自己锁定"的灰色一眼区分开 */
@@ -377,8 +489,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
 /* 手机上的"选择模式"弹窗：三档尽量一屏看完，底部按钮始终可见
    （桌面上本来就能一屏看完，所以只在窄屏生效） */
-@media (max-width: 560px) {
-  .modal { padding: 18px 16px; }
+@media (max-width: 560px) {  .modal { padding: 18px 16px; }
   .modal h3 { font-size: 18px; }
   .modal .modal-sub { font-size: 12.5px; margin-bottom: 12px; }
   .modal .cards { gap: 9px; }
@@ -391,5 +502,289 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .modal-actions {
     position: sticky; bottom: 0;        /* 滚动时按钮不会滑走 */
     background: var(--bg2); margin-top: 12px; padding: 10px 0 2px;
+  }
+
+  /* 价目表在手机上：三列挤不下，名称会被压成一字一行。
+     这里收窄内边距 + 让名称列不换行，说明列自然占剩下的宽度。 */
+  .price-table { font-size: 13px; }
+  .price-table th, .price-table td { padding: 9px 8px; }
+  .price-table th:first-child, .price-table td:first-child { white-space: nowrap; }
+  .price-table td:nth-child(2) { padding-left: 4px; padding-right: 6px; }
+
+  /* ★ 收入那张表（6 列）在手机上也是"一条一张卡"：
+     日期那列必须不换行，否则「10月13日」会被拆成两行。 */
+  .income-big { font-size: 34px; }
+  .income-head { padding: 16px; }
+  .table-wrap .price-table td:first-child { white-space: nowrap; }
+}
+
+/* 页脚收尾区：读完这页的人，这里是他最后的出口（二维码 + 微信号） */
+.footer-wechat {
+  display: flex; gap: 16px; align-items: center;
+  margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line);
+}
+.footer-wechat img {
+  width: 120px; height: 120px; object-fit: contain; border-radius: 10px;
+  background: #fff; padding: 4px; flex: 0 0 auto;
+}
+.footer-wechat-text { flex: 1 1 auto; min-width: 0; }
+.footer-wechat-text .done-wechat-id { margin: 0 0 6px; }
+@media (max-width: 560px) {
+  .footer-wechat { flex-direction: column; align-items: flex-start; }
+  .footer-wechat img { width: 104px; height: 104px; }
+}
+
+/* 「加微信下单」弹窗里那句现成的话：客户加上我之后照着发就行 */
+.say-box {
+  margin: 14px 0 0; padding: 14px 16px;
+  background: rgba(var(--accent-rgb), .10);
+  border: 1px dashed rgba(var(--accent-rgb), .55);
+  border-radius: 12px;
+  font-size: 17px; font-weight: 700; color: var(--accent);
+  text-align: center; word-break: break-all;
+}
+
+/* 预约成功弹窗里的「加我微信」区（主行动）—— 客户主动加我，双向都能找到人 */
+.done-wechat {
+  display: flex; gap: 14px; align-items: flex-start;
+  margin-top: 14px; padding: 14px;
+  background: rgba(var(--accent-rgb), .07);
+  border: 1px solid rgba(var(--accent-rgb), .28); border-radius: 12px;
+}
+.done-wechat img {
+  width: 132px; height: 132px; object-fit: contain; border-radius: 10px;
+  background: #fff; padding: 4px; flex: 0 0 auto;
+}
+.done-wechat-text { flex: 1 1 auto; min-width: 0; }
+.done-wechat-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.done-wechat-id { margin: 6px 0 8px; }
+.done-wechat-id b { color: var(--accent); font-size: 16px; }
+.done-wechat-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .done-wechat { flex-direction: column; align-items: center; text-align: center; }
+  .done-wechat-actions { justify-content: center; }
+}
+/* 不在微信里打开时：长按识别不可靠，就把二维码缩小、别抢"复制微信号"的位置 */
+.done-wechat.compact img { width: 92px; height: 92px; }
+.done-wechat.compact { padding: 12px; }
+
+/* ==========================================================================
+   两级分区：个人主页（服务卡片）+ 分区页（导航标签 / 分区首屏 / 价目表）
+   主色由服务端注入（--accent / --accent-rgb / --accent-ink），这里全部用它
+   ========================================================================== */
+
+/* ---------- 顶部：按大类分区的标签（三角洲 · 守望 │ 明日方舟 │ 剪辑 · PS） ---------- */
+.zone-tabs {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-left: 4px; font-size: 12.5px; min-width: 0;
+}
+.zone-group { display: inline-flex; align-items: center; gap: 5px; }
+.zone-group + .zone-group::before {
+  content: ''; width: 1px; height: 16px; background: var(--line); margin: 0 8px;
+}
+.zone-group-name { color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+.zone-tab {
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+  color: var(--muted); white-space: nowrap; transition: .15s;
+}
+.zone-tab:hover { color: var(--text); border-color: rgba(var(--accent-rgb), .45); }
+.zone-tab.active {
+  color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 700;
+}
+
+/* ---------- 首页：按大类分组的服务卡片 ---------- */
+.service-group { margin-bottom: 34px; }
+.service-group:last-child { margin-bottom: 0; }
+.group-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.group-head h3 { margin: 0; font-size: 19px; }
+.group-icon { font-size: 19px; }
+.zone-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.zone-card {
+  display: flex; flex-direction: column; overflow: hidden; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); transition: .16s;
+}
+.zone-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--zone, var(--accent)) 60%, transparent);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .4);
+}
+/* 卡片封面：主人的图（分区图标 / 首屏图 / 展示墙第一张）铺满，没图就留一块主色底 */
+.zone-cover {
+  height: 152px; background: linear-gradient(135deg,
+    color-mix(in srgb, var(--zone, var(--accent)) 45%, #0d1210), #0d1210);
+  background-size: cover; background-position: center;
+  display: grid; place-items: center; border-bottom: 1px solid var(--line);
+}
+.zone-cover span {
+  font-size: 26px; font-weight: 800; letter-spacing: .1em;
+  color: color-mix(in srgb, var(--zone, var(--accent)) 80%, white);
+}
+.zone-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.zone-body strong { font-size: 16.5px; }
+.zone-body p { margin: 0; color: var(--muted); font-size: 13px; min-height: 20px; }
+.zone-price { color: var(--accent); font-size: 13.5px; font-weight: 700; }
+
+/* ---------- 首页：信任信号 ---------- */
+.trust-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.trust-item {
+  display: flex; align-items: center; gap: 10px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font-size: 14px;
+}
+.trust-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 10px var(--accent); flex: 0 0 auto;
+}
+
+/* ---------- 首页：关于我下面的微信卡片 ---------- */
+.wechat-card {
+  display: flex; align-items: center; gap: 16px; margin-top: 18px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px;
+}
+.wechat-card img { width: 120px; height: 120px; object-fit: contain; border-radius: 10px; background: #fff; }
+.wechat-big { margin: 6px 0 0; font-size: 18px; font-weight: 800; color: var(--accent); letter-spacing: .04em; user-select: all; }
+
+/* ---------- 底部 CTA ---------- */
+.footer-cta {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding-bottom: 22px; margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.footer-big { margin: 0; font-size: 19px; font-weight: 800; }
+
+/* ---------- 分区页首屏：分区自己的背景图 + 首屏主视觉 ---------- */
+.zone-hero { position: relative; padding: 66px 0 46px; overflow: hidden; }
+.zone-hero-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  --dim: .72;                      /* 压暗程度，由 zone.js 按后台设置改写 */
+}
+.zone-hero-bg::after { content: ''; position: absolute; inset: 0; background: #050806; opacity: var(--dim); }
+.zone-hero > .container { position: relative; z-index: 1; }
+
+/* ---------- 分区页：小标题 / 主推档位 / 分组价目表 ---------- */
+.sub-title { margin: 26px 0 12px; font-size: 16px; }
+.cards.featured { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.featured-card { border-color: rgba(var(--accent-rgb), .45); position: relative; }
+.featured-card .price-text {
+  font-size: 26px; font-weight: 800; color: var(--accent); letter-spacing: .02em;
+}
+.badge.hot { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); background: rgba(var(--accent-rgb), .1); }
+.price-groups { display: grid; gap: 12px; margin-top: 12px; }
+.price-group { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.price-group > summary {
+  cursor: pointer; list-style: none; padding: 15px 18px;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+}
+.price-group > summary::-webkit-details-marker { display: none; }
+.price-group > summary::after { content: '▾'; margin-left: auto; color: var(--muted); }
+.price-group[open] > summary::after { content: '▴'; }
+.price-group[open] > summary { border-bottom: 1px solid var(--line); }
+.group-title { font-weight: 700; font-size: 15.5px; }
+.price-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.price-table th, .price-table td { padding: 11px 18px; text-align: left; border-top: 1px solid var(--line); }
+/* 名称列不换行（"普通托管"被拆成两行很难看），说明列自然占剩下的宽度 */
+.price-table th:first-child, .price-table td:first-child { white-space: nowrap; }
+.price-table thead th { color: var(--muted); font-weight: 400; font-size: 12.5px; border-top: 0; }
+.price-table tr.hot td { background: rgba(var(--accent-rgb), .05); }
+.price-table td.money { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.price-table td:nth-child(2) { white-space: nowrap; }
+
+/* ---------- 分区页：价目表长图 ---------- */
+.price-sheet { margin-top: 22px; }
+.price-sheet label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+.price-sheet img {
+  width: 100%; border: 1px solid var(--line); border-radius: var(--radius);
+  cursor: zoom-in; background: var(--panel2);
+}
+
+/* ---------- 后台：分区管理 ---------- */
+.zone-admin-group { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+.zone-admin-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.zone-admin-head input { max-width: 160px; }
+.zone-admin-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 10px 12px; margin-top: 8px;
+}
+.zone-admin-row.hidden-zone { opacity: .55; }
+.zone-admin-row img.zone-icon { width: 38px; height: 38px; border-radius: 9px; object-fit: cover; }
+.zone-admin-row .zone-icon-empty {
+  width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--panel); border: 1px dashed var(--line); font-size: 16px;
+}
+.zone-admin-row .grow { flex: 1; min-width: 150px; }
+.zone-admin-row strong { font-size: 14px; }
+.zone-admin-row p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+.theme-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line); display: inline-block; }
+.import-box { display: grid; gap: 10px; margin-top: 10px; }
+.import-box textarea {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 9px; padding: 10px; font: inherit; font-size: 13px; min-height: 130px; resize: vertical;
+}
+.group-editor { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 12px; margin-bottom: 12px; }
+.group-editor .group-head-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 10px; }
+.group-editor .field { margin: 0; }
+.item-row { display: grid; grid-template-columns: minmax(110px, 1.1fr) minmax(90px, .8fr) minmax(160px, 2fr) auto; gap: 8px; align-items: end; margin-bottom: 8px; }
+.item-row .field { margin: 0; }
+.item-row .item-actions { display: flex; gap: 6px; padding-bottom: 2px; }
+
+/* ---------- ★ 客户标签页（客户档案 + 到期提醒） ---------- */
+/* 统计卡在这里是"能点的筛选按钮"，所以要把浏览器默认的按钮样式抹掉 */
+.customer-stat {
+  display: block; width: 100%; text-align: left; font: inherit; color: inherit;
+  cursor: pointer; transition: border-color .16s;
+}
+.customer-stat:hover { border-color: rgba(var(--accent-rgb), .45); }
+.customer-stat.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.customer-stat strong { font-size: 24px; }
+.customer-stat.active strong { color: var(--accent); }
+
+/* 客户列表：复用价目表那套表格样式（.price-table），这里只管外面和列宽。
+   目标就一个：一屏看清"谁 · 什么服务 · 多少钱 · 什么时候到期"，不要断行断得七零八落 */
+.table-wrap { overflow-x: auto; }
+.table-wrap .price-table { min-width: 760px; }
+/* 客户表列多（7 列 + 4 个操作按钮），列距比价目表紧一点 ——
+   目标是 1440 的屏幕能一屏放下，不用左右拖动才能点到「续费」（这张表每天都要看） */
+.table-wrap .price-table th, .table-wrap .price-table td { padding: 10px 10px; }
+.table-wrap .price-table td:last-child .button { padding-left: 9px; padding-right: 9px; }
+.table-wrap .price-table td { white-space: nowrap; }
+.table-wrap .price-table td:nth-child(3) { white-space: normal; min-width: 150px; }
+/* 客户列：名字不换行（"阿伟（演示）"被挤成三行很难扫），备注压成一行省略号 */
+.table-wrap .price-table td:first-child { white-space: normal; min-width: 150px; }
+.table-wrap .price-table td:first-child strong { white-space: nowrap; }
+.table-wrap .price-table td:first-child p {
+  max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.table-wrap .price-table td:nth-child(4),
+.table-wrap .price-table td:nth-child(5) { white-space: nowrap; }
+/* 联系方式通常不长，收窄它给客户列腾地方 */
+.table-wrap .price-table th:nth-child(2), .table-wrap .price-table td:nth-child(2) { max-width: 150px; }
+.table-wrap .price-table td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+.table-wrap .price-table td p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.table-wrap .price-table td .badge { white-space: nowrap; }
+.table-wrap .price-table td:last-child { white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .zone-tabs { display: none; }        /* 手机上顶栏放不下：用首页卡片进去更清楚 */
+  .item-row { grid-template-columns: 1fr 1fr; }
+  .zone-hero { padding: 42px 0 32px; }
+  .footer-cta { flex-direction: column; align-items: flex-start; }
+  /* 手机上把客户表格变成"一条一张卡"：靠 JS 写在每个 td 上的 data-label 显示字段名，
+     不用左右横向滚动 —— 主人多半是躺在床上用手机看今天该催谁的。 */
+  .table-wrap { overflow-x: visible; }
+  .table-wrap .price-table { min-width: 0; }
+  .table-wrap .price-table thead { display: none; }
+  .table-wrap .price-table tr {
+    display: block; padding: 12px 0; border-top: 1px solid var(--line);
+  }
+  .table-wrap .price-table td {
+    display: flex; gap: 10px; align-items: baseline; padding: 3px 0; border-top: 0;
+  }
+  .table-wrap .price-table td::before {
+    content: attr(data-label); flex: 0 0 74px; color: var(--muted); font-size: 12px;
+  }
+  .table-wrap .price-table td:first-child, .table-wrap .price-table td:last-child {
+    white-space: normal;
   }
 }

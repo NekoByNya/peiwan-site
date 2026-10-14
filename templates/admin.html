@@ -40,15 +40,59 @@
   <!-- 免费实例会清空数据，这里按"多久没备份"给你报警 -->
   <div class="notice" id="backupNotice" hidden></div>
 
+  <!-- ============ ★ 今日待办条（在标签栏上方，一进后台就能看到今天要干什么） ============ -->
+  <div class="todo-bar" id="todoBar"></div>
+
   <div class="tabs">
     <button class="tab active" data-tab="schedule">预约与时间</button>
-    <button class="tab" data-tab="profile">资料与报价</button>
+    <button class="tab" data-tab="customers">客户</button>
+    <!-- 收入紧挨着客户：这两个都是"生意看板"（该催谁 + 钱从哪来） -->
+    <button class="tab" data-tab="income">收入</button>
+    <button class="tab" data-tab="zones">分区管理</button>
+    <button class="tab" data-tab="profile">资料</button>
+    <button class="tab" data-tab="prices">报价</button>
     <button class="tab" data-tab="gallery">展示墙</button>
     <button class="tab" data-tab="settings">安全与备份</button>
   </div>
 
-  <!-- ---------- 预约与时间 ---------- -->
+  <!-- ---------- 预约与时间（全局：时间表所有分区共用） ---------- -->
   <section data-panel="schedule">
+    <!-- ★ 待确认处理台：客户自助预约会立刻锁走时段，但没确认之前都挂在这儿 -->
+    <div class="panel pending-panel" id="pendingPanel">
+      <h2>待确认的预约 <span class="badge warn" id="pendingCount">0 单</span></h2>
+      <p class="sub">
+        客户在前台自助预约时，那几格<b>立刻就被锁走了</b>。加得上微信、谈得拢，就点「已确认」；
+        联系不上、或者他放你鸽子，就点「释放时段」把那几个小时还给别人。
+        <b>没确认的单会一直留在这里提醒你</b>，不会自己消失。
+      </p>
+      <div class="record-list" id="pendingList"></div>
+
+      <!-- 自动释放开关（★ 默认关闭，必须你自己打开） -->
+      <div class="auto-release-box">
+        <div class="check-row" style="margin:0;flex-wrap:wrap;align-items:center;gap:8px">
+          <label for="autoReleaseHours">待确认超过</label>
+          <input type="number" id="autoReleaseHours" min="0" max="720" step="1" value="0"
+                 style="width:88px" title="填 0 = 不自动释放">
+          <!-- 这一行的文字和 docs\上线后第一周.md 里引用的「待确认超过 [__] 小时自动释放（0 = 不自动）」
+               对得上；改文案要同步改文档（tools\check_docs.py 会查「」里的界面文字）。 -->
+          <label for="autoReleaseHours">小时自动释放（0 = 不自动，推荐先用 0）</label>
+          <button class="button small ghost" id="saveAutoRelease">保存</button>
+          <span class="hint" id="autoReleaseState"></span>
+        </div>
+        <p class="hint" style="margin:8px 0 0">
+          ⚠️ 打开了就<b>真的会删</b>：超过这个小时数还没确认的客户预约会被自动释放（时段回到可约）。
+          三条安全线：<b>只删客户自助预约</b>（你自己锁的一律不碰）、<b>只删已经确认过的以外</b>
+          （你点过「已确认」的不碰）、<b>只删还没开始的时间</b>（已经过去的不碰）。
+          释放过哪几单会记在下面，随时能查。
+        </p>
+        <div id="autoReleasedBox"></div>
+      </div>
+    </div>
+
+    <div class="notice">
+      ⏳ <b>这份时间表是全部服务共用的</b>：客户不管从哪个分区（三角洲 / 守望 / …）进来，
+      占的都是同一批时段。所以这里只有一个时间表，不需要按分区各管一套。
+    </div>
     <div class="stats" id="stats"></div>
 
     <div class="panel">
@@ -144,31 +188,224 @@
     </div>
   </section>
 
-  <!-- ---------- 资料与报价 ---------- -->
-  <section data-panel="profile" style="display:none">
+  <!-- ---------- ★ 客户（客户档案 + 到期提醒，独立标签页） ---------- -->
+  <section data-panel="customers" style="display:none">
+
+    <!-- ① 一眼看清今天该做什么：点卡片 = 筛选 -->
+    <div class="stats" id="customerStats"></div>
+    <p class="hint" id="customerToday" style="margin:-10px 0 16px"></p>
+
+    <!-- ② 一键催续费区（今天的待办清单） -->
     <div class="panel">
-      <h2>基本资料</h2>
-      <p class="sub">主页上的信息，在这里随时调整。</p>
-      <div class="grid-2">
-        <div class="field"><label for="pName">名字</label><input id="pName" maxlength="20"></div>
-        <div class="field"><label for="pTagline">一句话简介</label><input id="pTagline" maxlength="40"></div>
-        <div class="field"><label for="pGame">游戏名</label><input id="pGame" maxlength="20" placeholder="例如：三角洲行动 / 永劫无间"></div>
-        <div class="field"><label for="pPlatform">接单平台</label><input id="pPlatform" maxlength="20"></div>
-        <div class="field"><label for="pWechat">微信号</label><input id="pWechat" maxlength="40"></div>
-        <div class="field"><label for="pXianyu">闲鱼链接</label><input id="pXianyu" maxlength="200"></div>
+      <h2>本周需要催的客户</h2>
+      <p class="sub">已超期 + 7 天内到期的都在这。点「复制催续费话术」就能直接发微信。</p>
+      <div class="record-list" id="customerRemind"></div>
+    </div>
+
+    <!-- ③ 客户列表 -->
+    <div class="panel">
+      <h2>客户列表</h2>
+      <p class="sub">
+        金额是<b>自由文本</b>，你写什么就显示什么（例如 <code>20R/月</code>）。
+        「到期日期」留空的客户是长期/一次性，永远不会催你。
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <div class="filters" id="customerFilters" style="margin:0"></div>
+        <div class="spacer" style="margin-left:auto"></div>
+        <input id="customerSearch" placeholder="🔍 搜索称呼 / 联系方式 / 档位" maxlength="30"
+               style="max-width:240px">
+        <button class="button primary small" id="newCustomer">+ 新增客户</button>
       </div>
-      <div class="field"><label for="pHeadline">首页大标题（换行 = 两行）</label><textarea id="pHeadline" maxlength="60"></textarea></div>
-      <div class="field"><label for="pBio">自我介绍</label><textarea id="pBio" maxlength="600"></textarea></div>
-      <div class="field"><label for="pExperience">陪玩经历 / 曾任职店铺（选填）</label><textarea id="pExperience" maxlength="300"></textarea></div>
-      <div class="field"><label for="pStyles">打法标签（用中文逗号隔开）</label><input id="pStyles"></div>
-      <div class="field"><label for="pAnnouncement">首页公告</label><input id="pAnnouncement" maxlength="120"></div>
-      <div class="check-row"><input type="checkbox" id="pAccepting"><label for="pAccepting">开放接单（关掉后，空闲时段会显示为"停接"）</label></div>
+      <div class="table-wrap">
+        <table class="price-table" id="customerTable"></table>
+      </div>
+      <p class="hint" id="customerListState"></p>
+    </div>
+  </section>
+
+  <!-- ---------- ★ 收入（月度统计 + 流水明细，独立标签页；紧挨着「客户」） ---------- -->
+  <section data-panel="income" style="display:none">
+
+    <!-- ① 大字 + 时间范围 -->
+    <div class="income-head">
+      <div class="income-head-main">
+        <p class="income-label" id="incomeRangeLabel">本月收入</p>
+        <strong class="income-big" id="incomeTotal">¥0</strong>
+        <p class="income-mom" id="incomeMom">还没有收入记录</p>
+      </div>
+      <div class="spacer"></div>
+      <button class="button primary" id="newPayment">+ 记一笔</button>
+    </div>
+    <div class="filters" id="incomeRanges"></div>
+
+    <!-- ② 按大类分的小卡（陪玩 / 代肝 / 其他服务 / 未分类） -->
+    <div class="stats" id="incomeCategoryStats"></div>
+
+    <!-- ③ 两个排行（各取前 5） -->
+    <div class="grid-2">
+      <div class="panel">
+        <h2>哪个服务最来钱</h2>
+        <p class="sub">按分区算的，前 5 名。</p>
+        <div class="record-list" id="incomeTopServices"></div>
+      </div>
+      <div class="panel">
+        <h2>哪个客户最舍得</h2>
+        <p class="sub">按客户称呼算的，前 5 名。（手动记账时填了「客户」的也算）</p>
+        <div class="record-list" id="incomeTopCustomers"></div>
+      </div>
+    </div>
+
+    <!-- ④ 流水明细（复用 .table-wrap .price-table，手机上会自动变卡片） -->
+    <div class="panel">
+      <h2>流水明细</h2>
+      <p class="sub">
+        只在下面勾选的时间范围里显示。三个记账入口都是自动的：
+        <b>确认预约</b>、<b>续费时填了金额</b>，以及剪辑 / PS / 建站这类一次性单子点右上角「+ 记一笔」。
+      </p>
+      <div class="table-wrap">
+        <table class="price-table" id="incomeTable"></table>
+      </div>
+      <p class="hint" id="incomeListState"></p>
+    </div>
+  </section>
+
+  <!-- ---------- 分区管理（★ 两级分区的核心） ---------- -->
+  <section data-panel="zones" style="display:none">
+    <div class="panel">
+      <h2>分区管理</h2>
+      <p class="sub">
+        一个分区 = 一个招牌页（网址 <code>/z/短标识</code>）。
+        「预约制」的分区会显示时间表，「服务制」的分区只显示价目表。
+        大类（陪玩 / 代肝 / 其他服务）只能改名和排序，不能删除 —— 这样分区永远有归属。
+      </p>
+      <div id="zoneAdminList"></div>
+      <p class="hint" id="zoneAdminState"></p>
     </div>
 
     <div class="panel">
-      <h2>主页图片</h2>
-      <p class="sub">三个都可以留空。选完图片会先自动压缩，<b>再点下面的「保存全部资料」才会生效</b>。</p>
+      <h2>首页预览</h2>
+      <p class="sub">客户打开首页时会看到的分组和卡片（隐藏的分区不在这里显示）。</p>
+      <div id="zonePreview"></div>
+      <a class="button ghost small" href="/" target="_blank" style="margin-top:12px">打开首页看看</a>
+    </div>
+  </section>
+
+  <!-- ---------- 资料与报价 ---------- -->
+  <section data-panel="profile" style="display:none">
+    <div class="panel">
+      <h2 id="editTargetTitle">正在编辑：个人主页</h2>
+      <p class="sub" id="editTargetHint">选「🏠 个人主页」只改首页；选某个分区只改那个分区 ——
+        两者的内容、图片、价格完全独立，改一边不会影响另一边。</p>
+      <div class="grid-2" style="align-items:end">
+        <div class="field" style="margin:0">
+          <label for="zonePick">分区</label>
+          <select id="zonePick"></select>
+        </div>
+        <div style="padding-bottom:10px">
+          <a class="button small ghost" id="zoneOpenLink" href="/" target="_blank">打开这个分区页</a>
+          <span class="hint" id="zoneKindHint"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="zoneEditBlock">
+    <div class="panel">
+      <h2>分区内容</h2>
+      <p class="sub" id="zoneContentHint">游戏名、标语、首屏大标题、详细介绍、服务亮点、公告、平台。</p>
+      <div class="grid-2">
+        <div class="field"><label for="zGame">游戏名 / 服务名</label><input id="zGame" maxlength="30" placeholder="例如：守望先锋 / 视频剪辑"></div>
+        <div class="field"><label for="zPlatform">接单平台</label><input id="zPlatform" maxlength="30" placeholder="例如：PC 电脑端 / 不限"></div>
+        <div class="field"><label for="zTagline">一句话简介</label><input id="zTagline" maxlength="60"></div>
+        <div class="field"><label for="zSubheadline">副标题（选填）</label><input id="zSubheadline" maxlength="120"></div>
+        <div class="field"><label for="zName">分区全称（网址里用 id，这里只是显示名）</label><input id="zName" maxlength="30"></div>
+        <div class="field"><label for="zShort">简称（顶部标签用，建议 2–4 字）</label><input id="zShort" maxlength="12"></div>
+      </div>
+      <div class="field"><label for="zHeadline">首屏大标题（换行 = 两行）</label><textarea id="zHeadline" maxlength="80"></textarea></div>
+      <div class="field"><label for="zBio">详细介绍</label><textarea id="zBio" maxlength="1200"></textarea></div>
+      <div class="field"><label for="zHighlights">服务亮点 / 打法标签（用中文逗号隔开）</label><input id="zHighlights"></div>
+      <div class="field"><label for="zAnnouncement">这个分区的公告（选填）</label><input id="zAnnouncement" maxlength="200"></div>
+    </div>
+
+    <div class="panel">
+      <h2>分区图片</h2>
+      <p class="sub">
+        五个位置都可以留空。选完图片会先自动压缩，<b>再点下面的「保存这个分区」才会生效</b>。
+        建议尺寸：分享图 1200×630；首屏图用 PNG 透明底；价目表长图宽度 1000 左右。
+      </p>
       <div class="upload-grid">
+        <div class="upload-item">
+          <label>分区图标（首页卡片小图，正方形最好）</label>
+          <img class="upload-preview" id="zIconPreview" alt="">
+          <input type="file" id="zIconFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-zone-image="icon">清除图标</button>
+        </div>
+        <div class="upload-item">
+          <label>分区背景图（铺满首屏，建议横图）</label>
+          <img class="upload-preview wide" id="zBackgroundPreview" alt="">
+          <input type="file" id="zBackgroundFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-zone-image="background">清除背景图</button>
+        </div>
+        <div class="upload-item">
+          <label>首屏主视觉（大标题旁边，建议 PNG 透明底）</label>
+          <img class="upload-preview" id="zHeroImagePreview" alt="">
+          <input type="file" id="zHeroImageFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-zone-image="heroImage">清除首屏图</button>
+        </div>
+        <div class="upload-item">
+          <label>微信分享图（1200×630，转发时显示这张）</label>
+          <img class="upload-preview wide" id="zShareImagePreview" alt="">
+          <input type="file" id="zShareImageFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-zone-image="shareImage">清除分享图</button>
+        </div>
+        <div class="upload-item">
+          <label>价目表长图（服务型分区用，可点击放大）</label>
+          <img class="upload-preview" id="zPriceSheetImagePreview" alt="">
+          <input type="file" id="zPriceSheetImageFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-zone-image="priceSheetImage">清除长图</button>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top:16px;align-items:end">
+        <div class="field" style="margin:0">
+          <label for="zTheme">主色（这个分区的按钮和高亮色）</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input type="color" id="zTheme" style="width:64px;height:38px;padding:2px">
+            <button class="button small ghost" id="zPickColor">从首屏图自动提取主色</button>
+            <span class="hint" id="zColorState"></span>
+          </div>
+        </div>
+        <div class="field" style="margin:0">
+          <label for="zBackgroundDim">背景压暗程度：<b id="zDimValue">72</b>%（数字越大，文字越清楚）</label>
+          <input type="range" id="zBackgroundDim" min="0" max="90" step="2" value="72">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>服务承诺 / 服务说明</h2>
+      <p class="sub">每行一条，会显示成 01 / 02 / 03 编号列表。</p>
+      <div class="field"><textarea id="zPromises" style="min-height:140px"></textarea></div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
+      <button class="button primary" id="saveZone">保存这个分区</button>
+      <span class="hint" id="zoneState"></span>
+    </div>
+    </div><!-- /zoneEditBlock -->
+
+    <!-- ============ 🏠 个人主页（只影响首页，不动任何分区） ============ -->
+    <div id="homeEditBlock" hidden>
+
+    <div class="panel">
+      <h2>🏠 主页设置（只影响个人主页）</h2>
+      <p class="sub">下面这些<b>只出现在个人主页</b>上，改它们不会影响任何分区页。</p>
+      <div class="grid-2">
+        <div class="field"><label for="pTagline">首页副标题（一句话介绍自己）</label><input id="pTagline" maxlength="60"></div>
+        <div class="field"><label for="pServicesIntro">首页服务区标题</label><input id="pServicesIntro" maxlength="30" placeholder="我能做什么"></div>
+      </div>
+      <div class="field"><label for="pBio">个人介绍（首页「关于我」）</label><textarea id="pBio" maxlength="600"></textarea></div>
+      <div class="field"><label for="pTrust">信任信号（每行一条，例如：微博完单量 1000+）</label><textarea id="pTrust" maxlength="600" style="min-height:90px"></textarea></div>
+
+      <div class="upload-grid" style="margin-top:16px">
         <div class="upload-item">
           <label>头像</label>
           <img class="upload-preview" id="avatarPreview" alt="">
@@ -176,41 +413,105 @@
           <button class="button small ghost" data-clear-image="avatar">清除头像</button>
         </div>
         <div class="upload-item">
-          <label>主页背景图（铺满整页，建议横图）</label>
-          <img class="upload-preview wide" id="backgroundPreview" alt="">
-          <input type="file" id="backgroundFile" accept="image/png,image/jpeg,image/webp">
-          <button class="button small ghost" data-clear-image="background">清除背景图</button>
+          <label>微信二维码（选填，放在首页「关于我」下面）</label>
+          <img class="upload-preview" id="wechatQrPreview" alt="">
+          <input type="file" id="wechatQrFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="wechatQr">清除二维码</button>
         </div>
         <div class="upload-item">
-          <label>首屏图片（放在大标题旁边，建议竖图或方图）</label>
-          <img class="upload-preview" id="heroImagePreview" alt="">
-          <input type="file" id="heroImageFile" accept="image/png,image/jpeg,image/webp">
-          <button class="button small ghost" data-clear-image="heroImage">清除首屏图</button>
+          <label>首页整页背景图（选填，铺满首页、自动压暗）</label>
+          <img class="upload-preview wide" id="siteBackgroundPreview" alt="">
+          <input type="file" id="siteBackgroundFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="background">清除首页背景图</button>
+        </div>
+        <div class="upload-item">
+          <label>主页首屏主视觉（选填，放在首页大标题上面；PNG 透明底最好看）</label>
+          <img class="upload-preview" id="homeHeroPreview" alt="">
+          <input type="file" id="homeHeroFile" accept="image/png,image/jpeg,image/webp">
+          <button class="button small ghost" data-clear-image="heroImage">清除首屏主视觉</button>
         </div>
       </div>
       <div class="field" style="max-width:340px;margin-top:16px">
-        <label for="pBackgroundDim">背景压暗程度：<b id="dimValue">72</b>%（数字越大，文字越清楚）</label>
-        <input type="range" id="pBackgroundDim" min="0" max="90" step="2" value="72">
+        <label for="pSiteDim">首页背景压暗程度：<b id="siteDimValue">72</b>%（数字越大，文字越清楚）</label>
+        <input type="range" id="pSiteDim" min="0" max="90" step="2" value="72">
       </div>
-      <p class="hint" id="uploadState"></p>
+      <p class="hint" id="uploadState" style="margin-top:12px"></p>
     </div>
 
     <div class="panel">
-      <h2>陪玩报价</h2>
-      <p class="sub">主页报价卡片，也是客户预约时能选的"模式"。</p>
+      <h2>🌐 全局共用（首页和每个分区页都会用到）</h2>
+      <p class="sub">品牌名显示在每个页面顶部；微信号 / 闲鱼出现在所有页面的「加微信」区域；
+      接单开关控制所有分区的时间表。</p>
+      <div class="grid-2">
+        <div class="field"><label for="pBrand">品牌名（例如 Nya）</label><input id="pBrand" maxlength="20"></div>
+        <div class="field"><label for="pName">昵称（客户怎么称呼你）</label><input id="pName" maxlength="20"></div>
+        <div class="field"><label for="pWechat">微信号</label><input id="pWechat" maxlength="40"></div>
+        <div class="field"><label for="pXianyu">闲鱼链接</label><input id="pXianyu" maxlength="200"></div>
+      </div>
+      <div class="check-row"><input type="checkbox" id="pAccepting"><label for="pAccepting">开放接单（关掉后，所有分区的空闲时段都会显示为"停接"）</label></div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
+      <button class="button primary" id="saveProfile">保存主页设置</button>
+      <span class="hint" id="profileState"></span>
+      <span class="hint">（两个区块一起保存）</span>
+    </div>
+    </div><!-- /homeEditBlock -->
+  </section>
+
+  <!-- ==================== 报价（独立标签页） ==================== -->
+  <section data-panel="prices" style="display:none">
+    <div class="panel">
+      <h2>给哪个分区定报价</h2>
+      <p class="sub">报价是<b>按分区</b>的：预约制分区填三档小时价，服务制分区填分组价目表。</p>
+      <div class="grid-2" style="align-items:end">
+        <div class="field" style="margin:0">
+          <label for="priceZonePick">分区</label>
+          <select id="priceZonePick"></select>
+        </div>
+        <div style="padding-bottom:10px">
+          <a class="button small ghost" id="priceOpenLink" href="/" target="_blank">打开这个分区页</a>
+          <span class="hint" id="priceKindHint"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 预约制分区：三档价格 -->
+    <div class="panel" id="zonePricesPanel">
+      <h2>陪玩报价（三档）</h2>
+      <p class="sub">客户预约时能选的「模式」就是这三档，价格是<b>数字</b>，按小时计费。</p>
       <div id="priceEditor"></div>
       <button class="button ghost small" id="addPrice" style="margin-top:10px">+ 增加一档</button>
     </div>
 
-    <div class="panel">
-      <h2>服务说明</h2>
-      <p class="sub">每行一条，会显示成 01 / 02 / 03 编号列表。</p>
-      <div class="field"><textarea id="pPromises" style="min-height:140px"></textarea></div>
+    <!-- 服务制分区：分组价目表 -->
+    <div class="panel" id="zoneGroupsPanel">
+      <h2>价目表（分组）</h2>
+      <p class="sub">
+        价格是<b>自由文本</b>，你怎么写就怎么显示（例如 <code>20R/月</code>、<code>推图15R</code>）。
+        勾「⭐主推」会出现在分区页最显眼的位置（最多 3 个）。
+      </p>
+      <div id="groupEditor"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <button class="button ghost small" id="addGroup">+ 增加一组</button>
+        <button class="button ghost small" id="toggleImport">📋 批量粘贴导入</button>
+      </div>
+      <div class="import-box" id="importBox" hidden>
+        <div class="field" style="margin:0">
+          <label for="importGroup">导入到哪一组（不存在会自动新建）</label>
+          <input id="importGroup" maxlength="30" placeholder="例如：托管">
+        </div>
+        <textarea id="importText" placeholder="普通托管 | 20R/月 | 日双清+每周返图+日常周常+基建+信用商店等，月卡加5R&#10;半精托管 | 55R/月 | 加活动/剿灭代打&#10;精托托管 | 100R/月 | 全托管，见价目表&#10;（说明可以省略；行首加 # 是注释，会被忽略）"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="button primary small" id="runImport">导入这些行</button>
+          <span class="hint" id="importState">每行格式：名称 | 价格 | 说明（说明可省略）</span>
+        </div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="button primary" id="saveProfile">保存全部资料</button>
-      <span class="hint" id="profileState"></span>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
+      <button class="button primary" id="savePrices">保存报价</button>
+      <span class="hint" id="priceState"></span>
     </div>
   </section>
 
@@ -219,34 +520,89 @@
     <div class="panel">
       <h2>新增展示</h2>
       <p class="sub">支持 JPG / PNG / WebP，上传前浏览器会自动压缩，请遮住他人隐私信息。</p>
+      <div class="field">
+        <label for="gZone">这张图属于哪个分区（决定它出现在哪个分区页）</label>
+        <select id="gZone"></select>
+      </div>
       <div class="grid-2">
         <div class="field"><label for="gTitle">标题 / 老板称呼</label><input id="gTitle" maxlength="60" placeholder="例如：今天的满载撤离"></div>
         <div class="field">
           <label for="gCategory">分类</label>
-          <select id="gCategory">
-            <option value="screenshot">游戏截图</option>
-            <option value="review">老板评价</option>
-          </select>
+          <select id="gCategory"></select>
         </div>
+      </div>
+      <div class="field">
+        <label for="gLink">点开跳转的链接（选填，例如 B 站视频地址 / 你做的网站）</label>
+        <input id="gLink" maxlength="300" placeholder="https://www.bilibili.com/video/BV…">
+        <p class="hint" style="margin:4px 0 0">
+          填了链接的图，客户点一下会<b>新窗口打开这个网址</b>（不再放大看图）——
+          剪辑作品、建站作品就靠它给客户看成品。视频和网页都请填 <code>https://</code> 开头的完整地址；
+          填别的（比如 <code>javascript:</code>）会被忽略，一律当成"这张图没有外链"。
+        </p>
       </div>
       <div class="field"><label for="gCaption">说明 / 评价内容</label><textarea id="gCaption" maxlength="300"></textarea></div>
       <div class="field">
         <label for="gFile">选择图片</label>
         <input type="file" id="gFile" accept="image/png,image/jpeg,image/webp">
       </div>
-      <div class="check-row"><input type="checkbox" id="gVisible" checked><label for="gVisible">保存后立即在首页公开</label></div>
+      <div class="check-row"><input type="checkbox" id="gVisible" checked><label for="gVisible">保存后立即在分区页公开</label></div>
       <button class="button primary" id="saveGallery" style="margin-top:14px">保存到展示墙</button>
       <span class="hint" id="galleryHint" style="margin-left:10px"></span>
     </div>
 
+    <!-- ★ 分类管理（和「分区管理」里大类那一行长得一样：改名 / ↑↓ / 删除 / 新增） -->
+    <div class="panel">
+      <h2>分类管理</h2>
+      <p class="sub">
+        展示墙的分类现在可以自己加了 —— 游戏截图 / 老板评价 / 作品只是默认的三个。
+        客户在前台看到的就是这几个筛选按钮。<b>改名字随时可以，短标识（id）不能改</b>，
+        因为已经传上去的图是靠 id 认分类的。分类底下还有图时会拦着不让删，免得图悄悄换组。
+      </p>
+      <div id="galleryCategoryAdmin"></div>
+      <div class="grid-2" style="margin-top:12px;align-items:end">
+        <div class="field" style="margin:0">
+          <label for="newGalleryCategory">新增分类</label>
+          <input id="newGalleryCategory" maxlength="20" placeholder="例如：作品 / 剪辑 / 建站">
+        </div>
+        <div>
+          <button class="button ghost small" id="addGalleryCategory">+ 新增分类</button>
+          <span class="hint" id="galleryCategoryState" style="margin-left:8px"></span>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <h2>展示内容</h2>
-      <p class="sub">「隐藏」不删除但首页看不见；「归档」收进归档区，可随时恢复。</p>
+      <p class="sub">「隐藏」不删除但分区页看不见；「归档」收进归档区，可随时恢复。</p>
       <div class="check-row" style="margin-bottom:12px">
         <input type="checkbox" id="showArchived"><label for="showArchived">查看归档</label>
       </div>
       <div class="record-list" id="galleryList"></div>
     </div>
+
+    <!-- ★ 展示墙的「展开编辑」小块（改分类 + 改外链）。
+         它是一个 <template>，平时不显示；点列表里某一项的「编辑」时，
+         admin.js 会把它克隆一份塞进那一项里（一次只开一条，所以 id 不会重复）。
+         放在 HTML 里而不是在 JS 里拼字符串，是为了让 tests/check_frontend.js 能对上号。 -->
+    <template id="galleryEditTemplate">
+      <div class="gallery-edit-box">
+        <div class="grid-2" style="align-items:end">
+          <div class="field" style="margin:0">
+            <label for="geCategory">分类</label>
+            <select id="geCategory"></select>
+          </div>
+          <div class="field" style="margin:0">
+            <label for="geLink">点开跳转的链接（选填，留空 = 取消外链）</label>
+            <input id="geLink" maxlength="300" placeholder="https://…">
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <button class="button small primary" data-save-gal="">保存这项</button>
+          <button class="button small ghost" data-edit-gal="">取消</button>
+          <span class="hint" id="geState" style="margin-left:8px"></span>
+        </div>
+      </div>
+    </template>
   </section>
 
   <!-- ---------- 安全与备份 ---------- -->
@@ -265,7 +621,7 @@
 
     <div class="panel">
       <h2>导出业务备份</h2>
-      <p class="sub">下载一个 JSON 文件，里面有你全部的预约时段、休息规则、资料、展示墙数据，<b>连图片也打包在里面</b>。建议每月导出一次，免费的 Render 实例重新部署会清空数据。</p>
+      <p class="sub">下载一个 JSON 文件，里面有你全部的预约时段、休息规则、资料、<b>分区（含每个分区的价格和图片）</b>、展示墙数据，<b>连图片也打包在里面</b>。建议每月导出一次。</p>
       <a class="button" href="/api/admin/export">下载备份 JSON</a>
       <span class="hint" id="exportState" style="margin-left:10px"></span>
       <p class="hint" style="margin-top:14px">
@@ -276,13 +632,16 @@
 
     <div class="panel">
       <h2>从备份恢复</h2>
-      <p class="sub">选择之前导出的备份 JSON。<b>会整体覆盖</b>现在的预约时段、休息规则、资料和展示墙（图片会一起恢复）。</p>
+      <p class="sub">选择之前导出的备份 JSON。<b>会整体覆盖</b>现在的预约时段、休息规则、资料、分区和展示墙（图片会一起恢复）。</p>
       <div class="field">
         <label for="importFile">选择备份文件</label>
         <input type="file" id="importFile" accept="application/json,.json">
       </div>
       <button class="button danger" id="importBtn">导入并覆盖</button>
       <span class="hint" id="importState" style="margin-left:10px"></span>
+      <p class="hint" style="margin-top:12px">
+        老备份（还没有分区概念的版本）也能导入：里面的预约、资料和展示墙会照常恢复，分区保持现状不动。
+      </p>
     </div>
 
     <div class="panel">
@@ -316,6 +675,172 @@
       <p class="sub" id="dataHint"></p>
     </div>
   </section>
+</div>
+
+<!-- ============ 客户：新增 / 编辑 ============ -->
+<div class="modal-mask" id="customerModal">
+  <div class="modal">
+    <h3 id="customerModalTitle">新增客户</h3>
+    <p class="modal-sub">
+      只有「客户称呼」是必填的。到期日期可以先留空，以后再补 —— 留空 = 一次性/长期，不算到期。
+    </p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="cName">客户称呼 *</label>
+        <input id="cName" maxlength="30" placeholder="微信昵称就行，例如：小明">
+      </div>
+      <div class="field">
+        <label for="cContact">联系方式</label>
+        <input id="cContact" maxlength="60" placeholder="微信号 / QQ 号 / 闲鱼号">
+      </div>
+      <div class="field">
+        <label for="cContactType">渠道</label>
+        <select id="cContactType">
+          <option value="wechat">微信</option>
+          <option value="qq">QQ</option>
+          <option value="xianyu">闲鱼</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="cZone">服务 / 分区</label>
+        <select id="cZone"></select>
+      </div>
+      <div class="field">
+        <label for="cItem">买的档位</label>
+        <input id="cItem" maxlength="40" placeholder="自由文本，例如：精托托管">
+      </div>
+      <div class="field">
+        <label for="cPrice">金额（自由文本）</label>
+        <input id="cPrice" maxlength="30" placeholder="20R/月 这种写法就行">
+      </div>
+      <div class="field">
+        <label for="cStart">开始日期</label>
+        <input type="date" id="cStart">
+      </div>
+      <div class="field">
+        <label for="cEnd">到期日期（留空 = 一次性/长期，不算到期）</label>
+        <input type="date" id="cEnd">
+      </div>
+      <div class="field">
+        <label for="cStatus">状态</label>
+        <select id="cStatus">
+          <option value="active">进行中</option>
+          <option value="paused">已暂停</option>
+          <option value="ended">已结束</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="cNote">备注（账号情况、特殊要求、返图时间…）</label>
+      <textarea id="cNote" maxlength="300"></textarea>
+    </div>
+    <p class="hint" id="cFormState"></p>
+    <div class="modal-actions">
+      <button class="button primary" id="cSave">保存</button>
+      <button class="button ghost" id="cCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 客户：续费 ============ -->
+<div class="modal-mask" id="renewModal">
+  <div class="modal">
+    <h3 id="renewTitle">续费</h3>
+    <p class="modal-sub" id="renewSub"></p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="renewSpan">续多久</label>
+        <select id="renewSpan">
+          <option value="1m">1 个月</option>
+          <option value="3m">3 个月</option>
+          <option value="1w">1 周</option>
+          <option value="custom">自定义天数</option>
+        </select>
+      </div>
+      <div class="field" id="renewDaysField" hidden>
+        <label for="renewDays">自定义天数</label>
+        <input type="number" id="renewDays" min="1" max="3650" step="1" value="30">
+      </div>
+      <div class="field">
+        <label for="renewMode">从哪天算</label>
+        <select id="renewMode">
+          <option value="extend">从原到期日往后推（推荐）</option>
+          <option value="from_today">从今天算</option>
+        </select>
+      </div>
+      <!-- ★ 第三刀：这次实际收了多少钱（选填）。
+           默认值 = 客户档案那串自由文本里解析出来的数字（"100R/月" → 100），解析不出就空着。
+           不填就不记账 —— 不逼他填（很多单是"先续后收钱"）。 -->
+      <div class="field">
+        <label for="renewAmount">这次实际收了多少钱？（选填，填了会自动记进「收入」）</label>
+        <div class="inline-field">
+          <input type="number" id="renewAmount" min="0" step="1" placeholder="留空 = 这次不记收入">
+          <span class="hint">元</span>
+        </div>
+      </div>
+    </div>
+    <p class="hint" id="renewPreview"></p>
+    <div class="modal-actions">
+      <button class="button primary" id="renewConfirm">确认续费</button>
+      <button class="button ghost" id="renewCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ★ 收入：记一笔 / 改一笔 ============ -->
+<div class="modal-mask" id="paymentModal">
+  <div class="modal">
+    <h3 id="paymentModalTitle">记一笔收入</h3>
+    <p class="modal-sub">
+      剪辑、PS、建站这类<b>不在时间表里</b>的单子用这里补上；预约和续费会自动记，不用手动填。
+      日期留空 = 按今天（北京时间）记。
+    </p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="payDate">日期（留空 = 今天）</label>
+        <input type="date" id="payDate">
+      </div>
+      <div class="field">
+        <label for="payAmount">金额（元）*</label>
+        <input type="number" id="payAmount" min="0" step="1" placeholder="例如：160">
+      </div>
+      <div class="field">
+        <label for="payZone">服务（选填，下拉选一个分区）</label>
+        <select id="payZone"></select>
+      </div>
+      <div class="field">
+        <label for="payItem">项目 / 档位（选填）</label>
+        <input id="payItem" maxlength="40" placeholder="例如：精托托管 / 一条 3 分钟视频">
+      </div>
+      <div class="field">
+        <label for="payCustomer">客户（选填，排行会用到）</label>
+        <input id="payCustomer" maxlength="30" placeholder="例如：小明">
+      </div>
+    </div>
+    <div class="field">
+      <label for="payNote">备注（选填）</label>
+      <textarea id="payNote" maxlength="200" placeholder="例如：B 站视频，客户验收当天就付了"></textarea>
+    </div>
+    <p class="hint" id="payFormState"></p>
+    <div class="modal-actions">
+      <button class="button primary" id="paySave">保存</button>
+      <button class="button ghost" id="payCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 复制失败时的兜底（和前台一样：长按手动复制） ============ -->
+<div class="modal-mask" id="copyModal">
+  <div class="modal">
+    <h3>长按下面的文字复制</h3>
+    <p class="modal-sub">你的浏览器不允许网页自动复制，请长按选中后点系统的「复制」。</p>
+    <textarea class="message" id="copyTextBox" readonly style="min-height:130px"></textarea>
+    <div class="modal-actions">
+      <button class="button primary" id="selectAllCopy">全选这段文字</button>
+      <button class="button ghost" id="closeCopyModal">关闭</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

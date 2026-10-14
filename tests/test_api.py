@@ -39,10 +39,12 @@ opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 ok = fail = 0
 
 
-def call(path, method="GET", payload=None):
+def call(path, method="GET", payload=None, extra_headers=None):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    for _k, _v in (extra_headers or {}).items():
+        req.add_header(_k, _v)
     try:
         with opener.open(req, timeout=20) as r:
             return r.status, r.read().decode("utf-8", "replace")
@@ -103,9 +105,20 @@ def check(name, cond, extra=""):
         print("  [FAIL] %s %s" % (name, extra))
 
 
+def cur_zone_id():
+    """两级分区之后，很多接口都要指定分区；测试里统一用"第一个可见分区"。
+
+    为什么是第一个而不是写死 delta：测试实例可能是空库（迁移建出 delta），
+    也可能被别的测试脚本改过，取"公开接口里的第一个"最稳。
+    """
+    pub = json.loads(call("/api/public")[1])
+    return pub["zone"]["id"]
+
+
 print("=== 1. 页面 ===")
-for path, keyword in [("/", "预约时间"), ("/admin", "管理终端"), ("/static/style.css", "--accent"),
-                      ("/static/site.js", "api/public"), ("/static/admin.js", "save-lock")]:
+# 两级分区之后：/ 是"个人服务招牌页"（品牌 + 我能做什么），分区页在 /z/<id>
+for path, keyword in [("/", "我能做什么"), ("/nya-0508", "管理终端"), ("/static/style.css", "--accent"),
+                      ("/static/site.js", "我能做什么"), ("/static/admin.js", "save-lock")]:
     s, b = call(path)
     check("GET %s" % path, s == 200 and keyword in b, "status=%s len=%d" % (s, len(b)))
 
@@ -124,9 +137,20 @@ today_status = sorted({x["status"] for x in pub["slots"][:24]})
 check("今天的状态只用合法的值（过去的算 past）",
       set(today_status) <= {"free", "past"}, str(today_status))
 check("资料已预置", pub["profile"]["name"] == "示例名字" and pub["profile"]["wechat"] == "your_wechat_id")
+# 两级分区：公开接口还要带上大类、分区列表和"当前分区"
+check("公开接口带上分区结构（categories / zones / zone）",
+      isinstance(pub.get("categories"), list) and len(pub["categories"]) == 3
+      and isinstance(pub.get("zones"), list) and bool(pub["zones"])
+      and isinstance(pub.get("zone"), dict) and pub["zone"].get("id"),
+      "zones=%s" % [z["id"] for z in pub.get("zones", [])])
 
 now = int(time.time() * 1000)
-target = next(x["start"] for x in pub["slots"] if x["status"] == "free")
+# ⚠️ 挑靶子要避开"当前这一小时"：
+#    如果你正好在整点前几秒跑测试，锁上的是「正在进行的那一小时」，
+#    几秒后跨过整点，它会从 free 变成 past —— 后面「该格变已预约」就会偶发失败。
+#    （真踩过：14:59:06 跑的，15:00 断言时那一格已经算 past 了）
+target = next(x["start"] for x in pub["slots"]
+              if x["status"] == "free" and x["start"] >= now + 2 * 3600 * 1000)
 s, b = call("/api/availability?hours=%d" % target)
 check("GET /api/availability 正常", s == 200 and json.loads(b)["slots"][0]["status"] == "free")
 s, b = call("/api/availability")
@@ -149,6 +173,28 @@ check("正确密码 200", s == 200 and json.loads(b).get("ok"))
 check("拿到会话 Cookie", any(c.name == "peiwan_session" for c in jar))
 s, b = call("/api/auth")
 check("GET /api/auth 已登录", json.loads(b)["authenticated"] is True)
+
+# 登录失败次数限制：防"拿脚本一直猜密码"。
+# ⚠️ 用 X-Forwarded-For 造一个假 IP，让这个测试用**自己的限流名额**——
+#    不然连错 8 次会把 127.0.0.1 也锁上，后面所有测试都登不进来。
+FAKE_IP = {"X-Forwarded-For": "203.0.113.77"}
+codes = []
+for i in range(10):
+    s, b = call("/api/auth", "POST", {"password": "guess-%d" % i}, extra_headers=FAKE_IP)
+    codes.append(s)
+check("同一 IP 连错密码：前 8 次是 401", codes[:8] == [401] * 8, str(codes))
+check("第 9 次开始被限流 → 429", codes[8] == 429, str(codes))
+check("限流时给的是中文提示", "秒后再试" in b or "太频繁" in b or "次数太多" in b, b.strip()[:60])
+# 被限流之后，**正确的密码也要挡住** —— 否则限流就形同虚设
+s2, b2 = call("/api/auth", "POST", {"password": PASSWORD}, extra_headers=FAKE_IP)
+check("被限流后即使密码正确也拦住（否则限流没意义）", s2 == 429, "实际 %s" % s2)
+# 换一个 IP 不受影响（别人被限流不该牵连到你）
+s3, b3 = call("/api/auth", "POST", {"password": PASSWORD},
+              extra_headers={"X-Forwarded-For": "203.0.113.88"})
+check("换一个 IP 正常登录（互不牵连）", s3 == 200, "实际 %s" % s3)
+# 本机（真实测试 IP）没有被牵连
+s4, b4 = call("/api/auth", "POST", {"password": PASSWORD})
+check("本机没被这个测试牵连", s4 == 200, "实际 %s" % s4)
 
 print("=== 5. 后台数据 ===")
 s, b = call("/api/admin")
@@ -236,7 +282,10 @@ s, b = call("/api/admin/profile", "PUT", {"profile": prof, "revision": adm["prof
 check("PUT profile", s == 200 and json.loads(b)["profileRevision"] == adm["profileRevision"] + 1)
 s, b = call("/api/admin/profile", "PUT", {"profile": prof, "revision": adm["profileRevision"]})
 check("旧版本号被拒绝(409)", s == 409, b.strip())
-check("公告已生效", json.loads(call("/api/public")[1])["profile"]["announcement"] == "测试公告")
+# 公告现在是"每个分区一份"，全局公告不再渲染到主页上；
+# 这里改成核对"接口里确实存下来了"，不再是"页面上看得到"
+check("公告已生效（存进了全局资料）",
+      json.loads(call("/api/public")[1])["profile"]["announcement"] == "测试公告")
 
 print("=== 9. 展示墙 ===")
 png = base64.b64encode(bytes.fromhex(
@@ -340,7 +389,8 @@ print("=== 13. 分享卡片与 HEAD 请求 ===")
 html = call("/")[1]
 check("主页里的 {{占位符}} 已全部替换", "{{" not in html and "}}" not in html)
 title_start = html.find("<title>")
-check("浏览器标题带上了名字", "<title>示例名字" in html, html[title_start:title_start + 50])
+# 首页大标题现在是品牌名（后台「全局资料 → 品牌名」，默认 Nya）
+check("浏览器标题带上了品牌名", "<title>Nya" in html, html[title_start:title_start + 50])
 check("og 分享标签存在",
       'property="og:title"' in html and 'property="og:description"' in html
       and 'property="og:site_name"' in html)
@@ -387,15 +437,22 @@ check("样式里引用了默认背景图", "default-bg.jpg" in css)
 # 改了名字，分享标题要立刻跟着变（不用重新部署）
 cur = json.loads(call("/api/admin")[1])
 prof = dict(cur["profile"])
-prof["name"] = "测试名字"
+prof["brand"] = "测试品牌"
 call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur["profileRevision"]})
 html2 = call("/")[1]
-check("改了名字，分享标题立刻跟着变", "<title>测试名字" in html2,
+check("改了品牌名，分享标题立刻跟着变", "<title>测试品牌" in html2,
       html2[html2.find("<title>"):html2.find("<title>") + 40])
 cur2 = json.loads(call("/api/admin")[1])
 prof2 = dict(cur2["profile"])
-prof2["name"] = "示例名字"
+prof2["brand"] = "Nya"
 call("/api/admin/profile", "PUT", {"profile": prof2, "revision": cur2["profileRevision"]})
+
+# 分区页的分享标题用分区自己的游戏名（客户转发守望分区，看到的就是守望）
+zs, zb = call("/z/" + cur_zone_id())
+zone_name = json.loads(call("/api/admin")[1])["zones"][0]["profile"]["game"] or ""
+check("★ 分区页标题用分区自己的游戏名",
+      bool(zone_name) and ("<title>%s" % zone_name) in zb,
+      "%s → %s" % (zone_name, zb[zb.find("<title>"):zb.find("<title>") + 50]))
 
 print("=== 14. 接单总开关 与 全天休息规则 ===")
 cur = json.loads(call("/api/admin")[1])
@@ -446,38 +503,80 @@ check("没传图片被拒绝(400)", s == 400, raw.strip())
 
 cur = json.loads(call("/api/admin")[1])
 prof = dict(cur["profile"])
-prof["background"] = media["url"]
-prof["heroImage"] = media["url"]
+prof["background"] = media["url"]          # 首页整页背景图（全局资料）
+prof["avatar"] = media["url"]              # 头像也是全局资料里的一张图（备份要打包它）
 prof["backgroundDim"] = 60
 call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur["profileRevision"]})
+# 分区自己的背景图 / 首屏图：这是**另一个分区**的一套图，和全局那份互不影响。
+# ⚠️ "保存分区资料"是整体替换（后台就是把整个 profile 发过来），所以这里先把现有资料
+#    读出来、改几个字段、再整体发回去 —— 不然会把价格之类的字段清空。
+zone_now = next(z for z in json.loads(call("/api/admin")[1])["zones"] if z["id"] == cur_zone_id())
+zimg = dict(zone_now["profile"])
+zimg["background"] = media["url"]
+zimg["heroImage"] = media["url"]
+zimg["backgroundDim"] = 40
+call("/api/admin/zones", "POST", {"action": "profile", "id": cur_zone_id(), "profile": zimg})
 pub_img = json.loads(call("/api/public")[1])
-check("公开接口带上了背景图和压暗设置",
-      pub_img["profile"]["background"] == media["url"] and pub_img["profile"]["backgroundDim"] == 60)
-check("背景图地址能被浏览器加载", call_bytes(pub_img["profile"]["background"])[0] == 200)
+check("公开接口带上了首页背景图和压暗设置（全局资料里）",
+      pub_img["site"]["background"] == media["url"]
+      and pub_img["profile"]["backgroundDim"] == 60
+      and pub_img["site"]["backgroundDim"] == 60
+      and pub_img["site"]["avatar"] == media["url"],
+      "site.background=%s dim=%s avatar=%s" % (pub_img["site"]["background"],
+                                               pub_img["site"]["backgroundDim"],
+                                               pub_img["site"]["avatar"]))
+check("背景图地址能被浏览器加载", call_bytes(pub_img["site"]["background"])[0] == 200)
+
+# 分区自己的背景图是另外一份（和全局那份互不影响）
+pub_zone_img = json.loads(call("/api/public?zone=" + cur_zone_id())[1])
+check("★ 分区有自己的背景图 / 首屏图（不占用全局那一份）",
+      pub_zone_img["zone"]["profile"]["background"] == media["url"]
+      and pub_zone_img["zone"]["profile"]["heroImage"] == media["url"]
+      and pub_zone_img["zone"]["profile"]["backgroundDim"] == 40,
+      str(pub_zone_img["zone"]["profile"]["background"]))
 
 backup2 = json.loads(call("/api/admin/export")[1])
-check("备份把资料里的图片也打包了",
-      str((backup2.get("profileImages") or {}).get("background", "")).startswith("data:image/png;base64,"))
+check("备份把资料里的图片也打包了（头像是全局资料里的图）",
+      str((backup2.get("profileImages") or {}).get("avatar", "")).startswith("data:image/png;base64,"),
+      "profileImages 里有：%s" % sorted((backup2.get("profileImages") or {}).keys()))
+check("★ 备份把分区的那几张图也打包了",
+      str(((backup2.get("zoneImages") or {}).get(cur_zone_id()) or {})
+          .get("heroImage", "")).startswith("data:image/png;base64,"),
+      str(sorted((backup2.get("zoneImages") or {}).keys())))
 
-cur = json.loads(call("/api/admin")[1])
-prof = dict(cur["profile"])
+cur3 = json.loads(call("/api/admin")[1])
+prof = dict(cur3["profile"])
 prof["background"] = ""
-prof["heroImage"] = ""
-call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur["profileRevision"]})
-check("背景图已清空", json.loads(call("/api/public")[1])["profile"]["background"] == "")
+prof["avatar"] = ""
+call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur3["profileRevision"]})
+check("首页背景图和头像已清空",
+      json.loads(call("/api/public")[1])["site"]["background"] == ""
+      and json.loads(call("/api/public")[1])["site"]["avatar"] == "")
 
 call("/api/admin/import", "POST", {"backup": backup2})
-restored_bg = json.loads(call("/api/public")[1])["profile"]["background"]
+restored_bg = json.loads(call("/api/public")[1])["site"]["background"]
 check("从备份恢复后背景图回来了，而且是能打开的图片",
       restored_bg.startswith("/api/media/") and call_bytes(restored_bg)[0] == 200, restored_bg)
+check("★ 从备份恢复后头像也回来了",
+      call_bytes(json.loads(call("/api/public")[1])["site"]["avatar"])[0] == 200)
+restored_hero = json.loads(call("/api/public?zone=" + cur_zone_id())[1])["zone"]["profile"]["heroImage"]
+check("★ 从备份恢复后，分区首屏图也回来了",
+      restored_hero.startswith("/api/media/") and call_bytes(restored_hero)[0] == 200, restored_hero)
 
-# 收尾：把三张图清空，回到初始状态
+# 收尾：把图片清空，回到初始状态（后面第 16 节要验"没设头像时用自带分享图"）
 cur = json.loads(call("/api/admin")[1])
 prof = dict(cur["profile"])
-prof["background"] = prof["heroImage"] = prof["avatar"] = ""
+prof["background"] = prof["avatar"] = ""
 call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur["profileRevision"]})
-check("清理完成（三张图为空）",
-      json.loads(call("/api/public")[1])["profile"]["background"] == "")
+zone_now = json.loads(call("/api/admin")[1])["zones"]
+zcur = next(z for z in zone_now if z["id"] == cur_zone_id())
+zprof = dict(zcur["profile"])
+zprof["background"] = zprof["heroImage"] = ""
+call("/api/admin/zones", "POST", {"action": "profile", "id": cur_zone_id(), "profile": zprof})
+check("清理完成（图片都为空）",
+      json.loads(call("/api/public")[1])["site"]["background"] == ""
+      and json.loads(call("/api/public")[1])["site"]["avatar"] == ""
+      and json.loads(call("/api/public?zone=" + cur_zone_id())[1])["zone"]["profile"]["heroImage"] == "")
 
 print("=== 16. 微信分享卡片与复制兜底 ===")
 html = call_text("/")[1]
@@ -517,6 +616,23 @@ cur = json.loads(call("/api/admin")[1])
 prof = dict(cur["profile"])
 prof["avatar"] = ""
 call("/api/admin/profile", "PUT", {"profile": prof, "revision": cur["profileRevision"]})
+
+# ★ 分区页的分享卡片要用**那个分区自己的图**（客户转发守望分区就该显示守望的图）
+media_share = json.loads(call("/api/admin/media", "POST",
+                              {"image": "data:image/png;base64," + png_b64})[1])["url"]
+# ⚠️ "保存分区资料"是**整体替换**（后台就是把整个 profile 发过来），
+#    所以测试里也要先把现有资料读出来、改一两个字段、再整体发回去，
+#    否则会把价格之类的字段清空（后面的 test_booking 还要用它们）。
+zone_now = next(z for z in json.loads(call("/api/admin")[1])["zones"] if z["id"] == cur_zone_id())
+zshare = dict(zone_now["profile"])
+zshare["game"] = "三角洲行动"
+zshare["shareImage"] = media_share
+call("/api/admin/zones", "POST", {"action": "profile", "id": cur_zone_id(), "profile": zshare})
+zone_html = call_text("/z/" + cur_zone_id())[1]
+check("★ 分区页 og:image 用分区自己的分享图",
+      str(meta(zone_html, "og:image")).endswith(media_share), str(meta(zone_html, "og:image")))
+check("★ 分区页 og:url 指向 /z/<分区>",
+      str(meta(zone_html, "og:url")).endswith("/z/" + cur_zone_id()), str(meta(zone_html, "og:url")))
 
 # 微信号必须能在页面上直接看到（微信里自动复制常被拦）
 check("页面上有直接显示微信号的位置", 'id="wechatLine"' in html)

@@ -1,84 +1,34 @@
 /* ==========================================================================
-   首页逻辑：读接口 → 渲染 → 选时间 → 生成预约文案
-   没有框架、没有打包，浏览器直接跑
+   个人主页逻辑（/）—— 品牌 + 我能做什么 + 信任信号 + 加微信
+
+   数据是服务端渲染时塞进 window.__PAGE__ 的（见 app.py 的 render_page），
+   这里只负责把它画成卡片。分区页的交互在 zone.js 里，两边互不影响。
    ========================================================================== */
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-const CN_OFFSET = 8 * 3600 * 1000;   // 北京时间 = UTC+8
-const HOUR = 3600 * 1000;
-const MAX_HOURS = 6;                 // 一次最多能选几小时（和后端 MAX_BOOK_HOURS 保持一致）
+const PAGE = window.__PAGE__ || { site: {}, nav: [] };
+const SITE = PAGE.site || {};
 
-// 联系方式渠道：文案里、后台里都用这三个中文写法
-const CONTACT_TEXT = { wechat: '微信', xianyu: '闲鱼', qq: 'QQ' };
-const CONTACT_PLACEHOLDER = {
-  wechat: '你的微信号',
-  xianyu: '你的闲鱼用户名',
-  qq: '你的 QQ 号',
-};
+/* ---------- 客户在什么环境里打开的？----------
+   微信个人二维码是微信私有格式，只有微信自己能解析成"加好友"：
+   在微信里长按能识别，在别的浏览器里长按读不出可用结果。
+   所以提示语要分环境说，否则等于让客户做一件他做不到的事。 */
+const SITE_UA = navigator.userAgent || '';
+const IN_WECHAT = /MicroMessenger/i.test(SITE_UA);
 
-// 选时间那一行的默认提示语（被抢单/提示后要还原成这句，所以抽出来）
-const SELECTION_HINT = `先点选想玩的时间，连续或分开都可以（一次最多 ${MAX_HOURS} 小时）。`;
-
-const state = {
-  profile: null,
-  slots: [],
-  gallery: [],
-  selected: new Set(),   // 已选中的整点时间戳
-  dayIndex: 0,
-  galleryFilter: 'all',
-  modeIndex: 0,
-  syncedAt: 0,
-};
-
-/* ---------- 时间小工具：始终按北京时间显示，不受访客电脑时区影响 ---------- */
-function cn(ms) {
-  const d = new Date(ms + CN_OFFSET);
-  return {
-    y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(),
-    h: d.getUTCHours(), w: d.getUTCDay(),
-  };
-}
-const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-const pad = (n) => String(n).padStart(2, '0');
-const hhmm = (ms) => pad(cn(ms).h) + ':00';
-const dateLabel = (ms) => `${cn(ms).m}月${cn(ms).d}日`;
-const fullLabel = (ms) => `${dateLabel(ms)} ${WEEK[cn(ms).w]} ${hhmm(ms)}`;
-
-/* ---------- 通用请求：把网络错误翻译成人话 ----------
-   出错时会把 HTTP 状态码和响应内容挂在 Error 上（err.status / err.data），
-   预约那一段要靠它区分"被抢走了 409 / 太频繁 429 / 参数不对 400"。 */
-async function api(path, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch(path, {
-      ...options,
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    });
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-    if (!res.ok) {
-      const err = new Error(data.error || `请求失败（${res.status}）`);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-    return data;
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('连接网站超时，请刷新后重试。');
-    if (err instanceof TypeError) throw new Error('连接网站失败，请检查网络后重试。');
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
+/* ---------- 小工具 ---------- */
+function escapeHtml(text) {
+  return String(text == null ? '' : text).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 let toastTimer = null;
 function toast(message, isError = false) {
   const el = $('#toast');
+  if (!el) return;
   el.textContent = message;
   el.className = 'toast show' + (isError ? ' error' : '');
   clearTimeout(toastTimer);
@@ -124,9 +74,9 @@ function showCopyFallback(text) {
   toast('请长按框里的文字复制', true);
 }
 
-/* ---------- 主页背景图：有就铺满并压暗，没有就干净底色 ---------- */
+/* ---------- 首页背景图：有就铺满并压暗，没有就干净底色 ---------- */
 function applyBackground() {
-  const url = state.profile.background;
+  const url = SITE.background;
   let bg = document.querySelector('.site-bg');
   if (!url) {
     if (bg) bg.remove();
@@ -138,467 +88,143 @@ function applyBackground() {
     document.body.prepend(bg);
   }
   bg.style.backgroundImage = `url("${url}")`;
-  let dim = Number(state.profile.backgroundDim);
+  let dim = Number(SITE.backgroundDim);
   if (!Number.isFinite(dim)) dim = 72;
   bg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
 }
 
-/* ---------- 首屏图片：没上传就整块隐藏 ---------- */
-function renderHeroMedia() {
-  const url = state.profile.heroImage;
-  const box = $('#heroMedia');
-  box.hidden = !url;
-  box.innerHTML = url
-    ? `<img src="${url}" alt="${escapeHtml(state.profile.name)} 的游戏图">` : '';
-  $('#heroGrid').classList.toggle('with-media', !!url);
-}
+/* ---------- 首屏 ---------- */
+function renderHero() {
+  const brand = SITE.brand || SITE.name || '个人服务';
+  document.title = SITE.tagline ? `${brand} · ${SITE.tagline}` : brand;
+  $('#brandMark').textContent = brand;
+  $('#brandName').textContent = SITE.name || '';
+  $('#heroEyebrow').textContent = SITE.tagline || '个人服务';
+  $('#heroHeadline').textContent = brand;
+  $('#heroSub').textContent = SITE.name
+    ? `我是 ${SITE.name}，下面这些都是我一个人在做。`
+    : '下面这些都是我一个人在做。';
+  $('#heroHeadline').style.whiteSpace = 'pre-line';
+  $('#acceptingDot').classList.toggle('on', !!SITE.accepting);
+  $('#acceptingText').textContent = SITE.accepting ? '开放接单' : '暂时休整';
 
-/* ---------- 渲染：首屏与资料 ---------- */
-function renderProfile() {
-  const p = state.profile;
-  document.title = `${p.name} · 个人陪玩预约`;
-  $('#brandName').textContent = p.name;
-  $('#heroTagline').textContent = p.tagline || '';
-  $('#heroHeadline').textContent = p.headline || p.name;
-  $('#heroSub').textContent = p.platform ? `${p.platform} · 个人直约 · 时间表空档为准` : '';
-  $('#acceptingDot').classList.toggle('on', !!p.accepting);
-  $('#acceptingText').textContent = p.accepting ? '开放预约' : '暂时休整';
-  $('#announcement').textContent = p.announcement || '';
-  // 微信号直接显示在页面上（微信里自动复制经常被拦，客户还能长按选中）
   const wechatLine = $('#wechatLine');
-  if (p.wechat) {
-    wechatLine.innerHTML = `微信号：<b id="wechatValue">${escapeHtml(p.wechat)}</b>`
-      + '<span class="wechat-tip">长按可复制</span>';
+  if (SITE.wechat) {
+    wechatLine.innerHTML = `微信号：<b id="wechatValue">${escapeHtml(SITE.wechat)}</b>`
+      + (IN_WECHAT
+        ? '<span class="wechat-tip">长按可复制</span>'
+        : '<span class="wechat-tip">点一下复制，去微信粘贴</span>');
     wechatLine.hidden = false;
   } else {
     wechatLine.hidden = true;
-    wechatLine.textContent = '';
   }
-  $('#footerName').textContent = `${p.name} · 个人陪玩主页`;
+
+  // 主页首屏主视觉：只认「🏠 主页设置」里自己传的那张。
+  // ★ 以前是"借第一个分区的首屏图"，会有两个毛病：
+  //   1) 背景图和分区首屏图一样时，同一张图在首页出现好几次
+  //   2) 分区隐藏 / 换顺序，主页首屏图会莫名其妙跟着变
+  // 现在完全独立：传了才显示，不传就没有这块。
+  const cover = SITE.heroImage || '';
+  $('#heroMedia').hidden = !cover;
+  $('#heroMedia').innerHTML = cover ? `<img src="${cover}" alt="">` : '';
+  $('#heroGrid').classList.toggle('with-media', !!cover);
   applyBackground();
-  renderHeroMedia();
-
-  $('#priceCards').innerHTML = (p.prices || []).map((it, i) => `
-    <article class="card">
-      <div class="no">OPERATION / ${pad(i + 1)}</div>
-      <h3>${escapeHtml(it.name)}</h3>
-      <p>${escapeHtml(it.description || '')}</p>
-      <div class="price">¥${Number(it.price) || 0}<small> / 小时</small></div>
-    </article>`).join('') || '<div class="empty-state">还没有设置报价。</div>';
-
-  $('#promiseList').innerHTML = (p.promises || [])
-    .map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li>还没有填写服务说明。</li>';
-
-  $('#aboutName').textContent = p.name;
-  $('#aboutPlatform').textContent = p.platform || '';
-  $('#aboutBio').textContent = p.bio || '';
-  $('#aboutExperience').textContent = p.experience || '';
-  $('#styleTags').innerHTML = (p.styles || [])
-    .map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
-
-  $('#avatarBox').innerHTML = p.avatar
-    ? `<img class="avatar" src="${p.avatar}" alt="${escapeHtml(p.name)} 的头像">`
-    : `<div class="avatar empty">🎮</div>`;
 }
 
-function escapeHtml(text) {
-  return String(text == null ? '' : text).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+/* ---------- 服务区：按大类分组 ---------- */
+const GROUP_ICON = { '陪玩': '🎮', '代肝': '⚡', '其他服务': '🎨' };
+
+function renderServices() {
+  const groups = PAGE.nav || [];
+  $('#servicesTitle').textContent = SITE.services_intro || '我能做什么';
+  $('#serviceGroups').innerHTML = groups.length ? groups.map((g) => `
+    <div class="service-group">
+      <div class="group-head">
+        <span class="group-icon">${GROUP_ICON[g.name] || '🎯'}</span>
+        <h3>${escapeHtml(g.name)}</h3>
+        <span class="hint">${escapeHtml(g.hint || (g.kind === 'booking' ? '按小时预约' : '按需报价'))}</span>
+      </div>
+      <div class="zone-cards">
+        ${(g.zones || []).map((z) => `
+          <a class="zone-card" href="/z/${encodeURIComponent(z.id)}" style="--zone:${escapeHtml(z.theme)}">
+            <div class="zone-cover"${z.cover ? ` style="background-image:url('${escapeHtml(z.cover)}')"` : ''}>
+              ${z.cover ? '' : `<span>${escapeHtml((z.short || z.name).slice(0, 4))}</span>`}
+            </div>
+            <div class="zone-body">
+              <strong>${escapeHtml(z.name)}</strong>
+              <p>${escapeHtml(z.tagline || '点开看详情与价目')}</p>
+              ${z.startPrice ? `<span class="zone-price">${escapeHtml(z.startPrice)}</span>` : ''}
+            </div>
+          </a>`).join('')}
+      </div>
+    </div>`).join('')
+    : '<div class="empty-state">还没有分区。去后台「分区管理」新建一个，这里就会出现卡片。</div>';
 }
 
-/* ---------- 渲染：时间表 ---------- */
-function slotsByDay() {
-  const days = [];
-  for (const slot of state.slots) {
-    const key = dateLabel(slot.start);
-    let day = days.find((d) => d.label === key);
-    if (!day) { day = { label: key, start: slot.start, slots: [] }; days.push(day); }
-    day.slots.push(slot);
+/* ---------- 信任信号 ---------- */
+function renderTrust() {
+  const trust = SITE.trust || [];
+  const box = $('#trustList');
+  // 一条都没有的时候，整块隐藏 —— 这句后台提示不能给客户看到
+  // （主人想知道去哪填，看后台「分区管理 → 首页预览」或本文档即可）
+  const section = box.closest('section') || box.parentElement;
+  if (!trust.length) {
+    box.innerHTML = '';
+    if (section) section.hidden = true;
+    const navLink = document.querySelector('a[href="#trust"]');
+    if (navLink) navLink.hidden = true;
+    return;
   }
-  return days;
+  if (section) section.hidden = false;
+  box.innerHTML = trust.map((t) => `
+    <div class="trust-item"><span class="trust-dot"></span>${escapeHtml(t)}</div>`).join('');
 }
 
-function statusText(status) {
-  return { free: '可预约', booking: '已预约', rest: '休息', past: '已过去', closed: '停接' }[status] || status;
-}
+/* ---------- 关于我 + 底部 ---------- */
+function renderAbout() {
+  $('#aboutName').textContent = SITE.name || SITE.brand || '';
+  $('#aboutHint').textContent = SITE.tagline || '';
+  $('#aboutBio').textContent = SITE.bio || '';
+  $('#avatarBox').innerHTML = SITE.avatar
+    ? `<img class="avatar" src="${SITE.avatar}" alt="${escapeHtml(SITE.name || '')} 的头像">`
+    : `<div class="avatar empty">🐾</div>`;
 
-function renderSchedule() {
-  const days = slotsByDay();
-  if (!days.length) return;
-  if (state.dayIndex >= days.length) state.dayIndex = 0;
-
-  $('#dayTabs').innerHTML = days.map((day, i) => {
-    const free = day.slots.filter((s) => s.status === 'free').length;
-    return `<div class="day-tab ${i === state.dayIndex ? 'active' : ''}" data-day="${i}">
-      ${day.label}<b>${free} 个空闲</b></div>`;
-  }).join('');
-
-  const day = days[state.dayIndex];
-  const freeCount = day.slots.filter((s) => s.status === 'free').length;
-  $('#dayTitle').textContent = `${day.label} ${WEEK[cn(day.start).w]}`;
-  $('#dayFree').textContent = freeCount ? `${freeCount} 个空闲时段` : '这一天已排满';
-
-  $('#hourGrid').innerHTML = day.slots.map((slot) => {
-    const selected = state.selected.has(slot.start);
-    const clickable = slot.status === 'free';
-    return `<button class="hour-cell ${slot.status} ${selected ? 'selected' : ''}"
-      data-start="${slot.start}" ${clickable ? '' : 'disabled'}
-      title="${fullLabel(slot.start)}">${hhmm(slot.start)}<small>${
-        selected ? '已选' : statusText(slot.status)}</small></button>`;
-  }).join('');
-}
-
-function renderSelection() {
-  const hours = Array.from(state.selected).sort((a, b) => a - b);
-  $('#selectedHours').textContent = hours.length;
-  $('#selectedList').innerHTML = hours.map((h) =>
-    `<span class="chip">${fullLabel(h)}<button data-remove="${h}" title="移除">×</button></span>`).join('');
-  $('#nextStep').disabled = hours.length === 0;
-  $('#syncState').textContent = state.syncedAt
-    ? `已同步 ${hhmm(state.syncedAt)}` : '';
-}
-
-function toggleHour(start) {
-  if (state.selected.has(start)) {
-    state.selected.delete(start);
+  const card = $('#wechatCard');
+  const qr = $('#wechatQrImg');
+  if (SITE.wechatQr) {
+    qr.src = SITE.wechatQr;
+    qr.hidden = false;
   } else {
-    if (state.selected.size >= MAX_HOURS) return toast(`一次最多选择 ${MAX_HOURS} 小时`, true);
-    state.selected.add(start);
-  }  $('#selectionHint').className = 'hint';
-  $('#selectionHint').textContent = SELECTION_HINT;
-  renderSchedule();
-  renderSelection();
-}
-
-/* ---------- 空档核对：防止"刚被人抢先" ---------- */
-async function verifySelected() {
-  const hours = Array.from(state.selected).sort((a, b) => a - b);
-  if (!hours.length) return false;
-  const data = await api('/api/availability?hours=' + hours.join(','));
-  const bad = data.slots.filter((s) => s.status !== 'free');
-  if (bad.length) {
-    $('#selectionHint').className = 'hint error';
-    $('#selectionHint').textContent =
-      `这些时间已不可约：${bad.map((s) => fullLabel(s.start)).join('、')}，请移除后重新选择。`;
-    return false;
+    qr.hidden = true;
+    qr.removeAttribute('src');
   }
-  return true;
-}
+  $('#wechatBig').textContent = SITE.wechat ? `微信：${SITE.wechat}` : '';
+  card.hidden = !SITE.wechat && !SITE.wechatQr;
 
-/* ---------- 生成"只咨询、不锁定"的预约文案（次路径用） ---------- */
-function buildMessage() {
-  const p = state.profile;
-  const price = (p.prices || [])[state.modeIndex] || { name: '待定', price: 0 };
-  const hours = Array.from(state.selected).sort((a, b) => a - b);
+  $('#footerName').textContent = SITE.brand || SITE.name || '';
 
-  // 把连续的小时合并成"N 段"
-  const segments = [];
-  for (const h of hours) {
-    const last = segments[segments.length - 1];
-    if (last && h - last[last.length - 1] === HOUR) last.push(h);
-    else segments.push([h]);
+  // 页脚收尾区（和个人主页/分区页共用同一套结构）
+  const fq = $('#footerQr');
+  if (fq) {
+    if (SITE.wechatQr) { fq.src = SITE.wechatQr; fq.hidden = false; }
+    else { fq.hidden = true; fq.removeAttribute('src'); }
   }
-  const total = hours.length;
-  const fee = Number(((Number(price.price) || 0) * total).toFixed(2));
-  const lines = segments.map((seg, i) =>
-    `${i + 1}. ${fullLabel(seg[0])}–${hhmm(seg[seg.length - 1] + HOUR)}`).join('\n');
-
-  const contact = $('#bookContact') ? $('#bookContact').value.trim() : '';
-  const type = currentContactType();
-
-  // 游戏名 / 平台都来自后台资料 —— 同一套代码可以开任何游戏的预约站，不用改代码
-  const what = [p.game, p.platform].map((x) => (x || '').trim()).filter(Boolean).join(' ');
-  const head = what ? `你好，${p.name}！想约${what}陪玩。` : `你好，${p.name}！我想约你的陪玩服务。`;
-  return `${head}\n`
-    + `模式：${price.name}\n`
-    + `游玩时间（北京时间）：\n${lines}\n`
-    + `共 ${segments.length} 段、${total} 小时，参考费用 ¥${fee}。\n`
-    + (contact ? `我的${CONTACT_TEXT[type]}：${contact}\n` : '')
-    + `（这段只是咨询，时间还没锁定，麻烦你确认后帮我锁上。）`;
+  const fcap = $('#footerQrCaption');
+  if (fcap) fcap.hidden = IN_WECHAT || !SITE.wechatQr;
+  const fid = $('#footerWechatId');
+  if (fid) fid.textContent = SITE.wechat || '（还没设置微信号）';
+  $('#footerHint').textContent = SITE.tagline || '陪玩 / 代肝 / 剪辑 / 设计 / 建站 —— 都是我一个人做。';
 }
 
-/* ---------- 联系方式渠道 ---------- */
-function currentContactType() {
-  const el = $('#bookContactType');
-  return el && CONTACT_TEXT[el.value] ? el.value : 'wechat';
+/* ---------- 事件 ---------- */
+function copyWechat() {
+  if (!SITE.wechat) return toast('还没设置微信号，请先在后台填写。', true);
+  copyText(SITE.wechat, `微信号已复制：${SITE.wechat}`);
 }
 
-function applyContactPlaceholder() {
-  $('#bookContact').placeholder = CONTACT_PLACEHOLDER[currentContactType()] || '你的联系方式';
-}
-
-function renderModeModal() {
-  const p = state.profile;
-  const prices = p.prices || [];
-  if (state.modeIndex >= prices.length) state.modeIndex = 0;
-  $('#modeCards').innerHTML = prices.map((it, i) => `
-    <article class="card selectable ${i === state.modeIndex ? 'active' : ''}" data-mode="${i}">
-      <div class="no">OPERATION / ${pad(i + 1)}</div>
-      <h3>${escapeHtml(it.name)}</h3>
-      <p>${escapeHtml(it.description || '')}</p>
-      <div class="price">¥${Number(it.price) || 0}<small> / 小时</small></div>
-    </article>`).join('') || '<div class="empty-state">还没有设置报价，请先在后台添加。</div>';
-
-  const price = prices[state.modeIndex];
-  const total = state.selected.size;
-  $('#estimate').textContent = price
-    ? `已选 ${total} 小时 · 参考费用 ¥${((Number(price.price) || 0) * total).toFixed(2)}`
-      + `（按实际游玩时间结算，一次最多 ${MAX_HOURS} 小时）`
-    : '';
-  applyContactPlaceholder();
-  $('#messageBox').value = buildMessage();
-}
-
-/* ---------- 主路径：立即锁定时间 ---------- */
-async function bookNow() {
-  const price = (state.profile.prices || [])[state.modeIndex];
-  const hours = Array.from(state.selected).sort((a, b) => a - b);
-  if (!price) return toast('还没有设置报价，请先在后台添加。', true);
-  if (!hours.length) return toast('请先选择时间', true);
-
-  const contact = $('#bookContact').value.trim();
-  const contactType = currentContactType();
-  const box = $('#bookState');
-  if (contact.length < 2 || contact.length > 40) {
-    box.className = 'hint error';
-    box.textContent = '请填写你的联系方式（微信 / 闲鱼 / QQ），2–40 个字符，不然我加不上你。';
-    toast('请先填写联系方式', true);
-    return;
-  }
-
-  const btn = $('#bookNow');
-  btn.disabled = true;
-  btn.textContent = '正在锁定…';
-  box.className = 'hint';
-  box.textContent = '';
-  try {
-    const data = await api('/api/book', {
-      method: 'POST',
-      body: JSON.stringify({
-        hours, mode: price.name, contact, contactType, note: $('#bookNote').value.trim(),
-      }),
-    });
-    // 成功：清空选择、刷新时间表（那几格现在已经是「已预约」），再弹出成功页
-    state.selected.clear();
-    await loadPublic();
-    $('#modeModal').classList.remove('open');
-    renderDone(data);
-    $('#doneModal').classList.add('open');
-    toast('时间已锁定，记得把文案发给我');
-  } catch (err) {
-    handleBookError(err);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '立即锁定时间';
-  }
-}
-
-/** 预约失败时的提示：409 被抢走 / 429 太频繁 / 400 参数不对 / 其它（网络） */
-function handleBookError(err) {
-  const box = $('#bookState');
-  const detail = err.data || {};
-  if (err.status === 409) {
-    // 把已经被抢走的小时从选中列表里去掉，客户直接重新选就行
-    (detail.conflicts || []).forEach((h) => state.selected.delete(h));
-    renderSchedule();
-    renderSelection();
-    box.className = 'hint error';
-    box.textContent = err.message;
-    toast('有几段时间刚被别人约走了，请重新选择', true);
-    syncStatuses();
-    return;
-  }
-  if (err.status === 429) {
-    box.className = 'hint error';
-    box.textContent = err.message || '提交太频繁，请过几分钟再试。';
-    toast('提交太频繁，请稍后再试', true);
-    return;
-  }
-  if (err.status === 400) {
-    box.className = 'hint error';
-    box.textContent = err.message;
-    toast(err.message, true);
-    return;
-  }
-  toast(`${err.message}（可以再点一次「立即锁定时间」试试）`, true);
-}
-
-/** 锁定成功页：写清楚锁了哪几段、总价，并保留一键复制文案 */
-function renderDone(data) {
-  const p = state.profile || {};
-  $('#doneLocks').innerHTML = (data.locks || []).map((seg) => `
-    <article class="record">
-      <span class="badge ok">已锁定</span>
-      <div class="grow">
-        <strong>${fullLabel(seg.start)} – ${hhmm(seg.end)}</strong>
-        <p>${seg.hours} 小时 · ¥${seg.price}</p>
-      </div>
-    </article>`).join('');
-  $('#doneSummary').innerHTML =
-    `模式：<b>${escapeHtml(data.mode)}</b> · 共 <b>${data.totalHours}</b> 小时`
-    + ` · 合计 <b>¥${data.totalPrice}</b> · 联系方式：<b>${CONTACT_TEXT[data.contactType] || '微信'} `
-    + `${escapeHtml(data.contact || '')}</b>`;
-  $('#doneNote').textContent = p.wechat
-    ? `我已收到通知，会尽快加你确认（我的微信号：${p.wechat}）。`
-    : '我已收到通知，会尽快加你确认。';
-  $('#doneMessage').value = data.message || '';
-}
-
-/* ---------- 展示墙 ---------- */
-function renderGallery() {
-  const items = state.gallery.filter((g) =>
-    state.galleryFilter === 'all' || g.category === state.galleryFilter);
-  $('#galleryGrid').innerHTML = items.length ? items.map((g) => `
-    <article class="gallery-item">
-      <img src="${g.image}" alt="${escapeHtml(g.title)}" data-zoom="${g.image}">
-      <div class="meta">
-        <h4>${escapeHtml(g.title)}</h4>
-        <p>${escapeHtml(g.caption || '')}</p>
-      </div>
-    </article>`).join('')
-    : '<div class="empty-state" style="grid-column:1/-1">展示墙还在装修中，先来找我玩一局吧。</div>';
-}
-
-/* ---------- 加载与轮询 ---------- */
-async function loadPublic(showToast = false) {
-  const data = await api('/api/public');
-  state.profile = data.profile;
-  state.slots = data.slots;
-  state.gallery = data.gallery;
-  state.syncedAt = data.serverTime;
-  renderProfile();
-  renderSchedule();
-  renderSelection();
-  renderGallery();
-  if (showToast) toast('时间表已刷新');
-}
-
-async function syncStatuses() {
-  try {
-    const data = await api('/api/public');
-    state.profile = data.profile;
-    state.slots = data.slots;
-    state.syncedAt = data.serverTime;
-    renderSchedule();
-    renderSelection();
-    // 已选时间如果被别人抢先，提示并标红
-    const map = new Map(state.slots.map((s) => [s.start, s.status]));
-    const bad = Array.from(state.selected).filter((h) => map.get(h) && map.get(h) !== 'free');
-    if (bad.length) {
-      $('#selectionHint').className = 'hint error';
-      $('#selectionHint').textContent =
-        `注意：${bad.map(fullLabel).join('、')} 刚刚已被占用或已过去，请移除后重新选择。`;
-    }
-  } catch {
-    /* 静默失败，下一次轮询再试 */
-  }
-}
-
-/* ---------- 事件绑定 ---------- */
 function bindEvents() {
-  $('#dayTabs').addEventListener('click', (e) => {
-    const tab = e.target.closest('.day-tab');
-    if (!tab) return;
-    state.dayIndex = Number(tab.dataset.day);
-    renderSchedule();
-  });
-
-  $('#hourGrid').addEventListener('click', (e) => {
-    const cell = e.target.closest('.hour-cell');
-    if (!cell || cell.disabled) return;
-    toggleHour(Number(cell.dataset.start));
-  });
-
-  $('#selectedList').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove]');
-    if (!btn) return;
-    state.selected.delete(Number(btn.dataset.remove));
-    renderSchedule();
-    renderSelection();
-  });
-
-  $('#clearSelection').addEventListener('click', () => {
-    state.selected.clear();
-    renderSchedule();
-    renderSelection();
-  });
-
-  $('#refreshSlots').addEventListener('click', () => loadPublic(true).catch((e) => toast(e.message, true)));
-
-  $('#nextStep').addEventListener('click', async () => {
-    const btn = $('#nextStep');
-    btn.disabled = true;
-    btn.textContent = '核对空档…';
-    try {
-      if (await verifySelected()) {
-        renderModeModal();
-        $('#modeModal').classList.add('open');
-      }
-    } catch (err) {
-      toast(err.message, true);
-    } finally {
-      btn.disabled = state.selected.size === 0;
-      btn.textContent = '下一步：选择模式';
-    }
-  });
-
-  $('#modeCards').addEventListener('click', (e) => {
-    const card = e.target.closest('[data-mode]');
-    if (!card) return;
-    state.modeIndex = Number(card.dataset.mode);
-    renderModeModal();
-  });
-
-  // 换渠道 → 换输入框提示语；填联系方式 → 文案里也跟着更新
-  $('#bookContactType').addEventListener('change', () => {
-    applyContactPlaceholder();
-    $('#messageBox').value = buildMessage();
-  });
-  $('#bookContact').addEventListener('input', () => {
-    $('#messageBox').value = buildMessage();
-  });
-
-  // 主路径：立即锁定时间
-  $('#bookNow').addEventListener('click', bookNow);
-
-  // 次路径：只复制文案，不锁定（文案里会写明"时间还没锁定"）
-  $('#copyMessage').addEventListener('click', () => copyText($('#messageBox').value, '咨询文案已复制，发给我即可'));
-  $('#closeModal').addEventListener('click', () => $('#modeModal').classList.remove('open'));
-  $('#modeModal').addEventListener('click', (e) => {
-    if (e.target === $('#modeModal')) $('#modeModal').classList.remove('open');
-  });
-
-  // 锁定成功页
-  $('#copyDoneMessage').addEventListener('click', () => copyText($('#doneMessage').value, '文案已复制，发给我即可'));
-  $('#closeDone').addEventListener('click', () => $('#doneModal').classList.remove('open'));
-  $('#doneModal').addEventListener('click', (e) => {
-    if (e.target === $('#doneModal')) $('#doneModal').classList.remove('open');
-  });
-
-  $('#galleryFilters').addEventListener('click', (e) => {
-    const btn = e.target.closest('.filter');
-    if (!btn) return;
-    state.galleryFilter = btn.dataset.cat;
-    $$('#galleryFilters .filter').forEach((b) => b.classList.toggle('active', b === btn));
-    renderGallery();
-  });
-
-  $('#galleryGrid').addEventListener('click', (e) => {
-    const img = e.target.closest('[data-zoom]');
-    if (!img) return;
-    $('#imageModalImg').src = img.dataset.zoom;
-    $('#imageModal').classList.add('open');
-  });
-  $('#closeImage').addEventListener('click', () => $('#imageModal').classList.remove('open'));
-
-  $('#copyWechat').addEventListener('click', async () => {
-    const wechat = state.profile && state.profile.wechat;
-    if (!wechat) return toast('还没设置微信号，请先在后台填写。', true);
-    copyText(wechat, `微信号已复制：${wechat}`);
-  });
-
-  // 复制兜底弹窗
+  $('#copyWechat').addEventListener('click', copyWechat);
+  $('#footerWechat').addEventListener('click', copyWechat);
   $('#selectAllCopy').addEventListener('click', () => {
     const box = $('#copyTextBox');
     box.focus();
@@ -612,13 +238,14 @@ function bindEvents() {
 }
 
 /* ---------- 启动 ---------- */
-(async function main() {
-  bindEvents();
+(function main() {
   try {
-    await loadPublic();
+    renderHero();
+    renderServices();
+    renderTrust();
+    renderAbout();
+    bindEvents();
   } catch (err) {
-    toast(err.message, true);
+    toast(`页面渲染出错：${err.message}`, true);
   }
-  // 每 30 秒同步一次，别人抢了你的时间你能立刻看到
-  setInterval(() => { if (!document.hidden) syncStatuses(); }, 30000);
 })();

@@ -89,7 +89,11 @@ def main():
 
     env = dict(os.environ)
     env.update({"PORT": str(PORT), "DATA_DIR": TEST_DATA, "ADMIN_PASSWORD": TEST_PASSWORD,
-                "PYTHONIOENCODING": "utf-8"})
+                "PYTHONIOENCODING": "utf-8",
+                # 让「自动释放」的惰性清理每次请求都真的查一遍库 ——
+                # 平时它是 30 秒节流一次（省得客户刷页面反复查库），
+                # 但测试要在几秒内连续验 5 种边界，节流会把中间几次跳过去。
+                "AUTO_RELEASE_CHECK_SECONDS": "0"})
 
     proc = start_server(env)
     try:
@@ -110,7 +114,42 @@ def main():
         bcode = subprocess.call(
             [sys.executable, os.path.join(ROOT, "tests", "test_booking.py")], env=tenv)
 
-        # ---------------- 第三阶段：真的重启一次 ----------------
+        # ---------------- 第三阶段：两级分区（大类 + 分区 + 老数据迁移） ----------------
+        print("\n" + "=" * 60)
+        print(" 两级分区测试（陪玩/代肝/其他服务 + 老库迁移零丢失）")
+        print("=" * 60, flush=True)
+        zcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_zones.py")], env=tenv)
+
+        # ---------------- 第四阶段：客户档案 + 到期提醒 ----------------
+        print("\n" + "=" * 60)
+        print(" 客户档案测试（谁快到期了 + 续费怎么算 + 时区）")
+        print("=" * 60, flush=True)
+        ccode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_customers.py")], env=tenv)
+
+        # ---------------- 第五阶段：展示墙外链 + 分类可配置（第一刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 展示墙测试（外链防 XSS + 分类增删改排序 + 老数据兼容）")
+        print("=" * 60, flush=True)
+        glcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_gallery_link.py")], env=tenv)
+
+        # ---------------- 第六阶段：待确认 + 自动释放（第二刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 待确认测试（确认 / 释放 / 自动释放的 5 种边界 + 老库迁移）")
+        print("=" * 60, flush=True)
+        cflcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_confirm.py")], env=tenv)
+
+        # ---------------- 第七阶段：收入登记 + 月度统计（第三刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 收入测试（三个记账入口 + 幂等 + 月度统计 + 备份恢复）")
+        print("=" * 60, flush=True)
+        incode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_income.py")], env=tenv)
+
+        # ---------------- 第八阶段：真的重启一次 ----------------
         print("\n" + "=" * 60)
         print(" 重启测试（模拟 Render 休眠 / 重新部署后的重启）")
         print("=" * 60, flush=True)
@@ -141,18 +180,19 @@ def main():
         if kept:
             check("时段内容完全一致", kept[0]["start"] == target and kept[0]["note"] == "重启后应该还在")
 
-        # ---------------- 第四阶段：并发读写 ----------------
+        # ---------------- 第九阶段：并发读写 ----------------
         print("\n" + "=" * 60)
         print(" 并发测试（客户看时间表的同时，你在后台锁定/取消时段）")
         print("=" * 60, flush=True)
         cenv = dict(os.environ)
         cenv.update({"TEST_BASE": BASE, "TEST_PASSWORD": TEST_PASSWORD, "PYTHONUNBUFFERED": "1"})
-        ccode = subprocess.call(
+        concode = subprocess.call(
             [sys.executable, os.path.join(ROOT, "tests", "test_concurrency.py")], env=cenv)
-        check("并发下没有报错", ccode == 0)
+        check("并发下没有报错", concode == 0)
 
         print("\n本阶段：通过 %d 项，失败 %d 项" % (ok, fail))
-        return code or bcode or ccode or (1 if fail else 0)
+        return (code or bcode or zcode or ccode or glcode or cflcode or incode or concode
+                or (1 if fail else 0))
     finally:
         stop_server(proc)
         shutil.rmtree(TEST_DATA, ignore_errors=True)

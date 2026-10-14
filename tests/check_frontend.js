@@ -3,8 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
 
+// 两级分区之后有两套前台页面：个人主页（/）和分区页（/z/<id>），各配一个脚本
 const pairs = [
   ['static/site.js', 'templates/index.html'],
+  ['static/zone.js', 'templates/zone.html'],
   ['static/admin.js', 'templates/admin.html'],
 ];
 
@@ -25,8 +27,10 @@ const css = cssRaw
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/url\([^)]*\)/g, 'url()');
 const classes = [...new Set([...css.matchAll(/\.([a-z][a-z0-9-]{2,})/g)].map((m) => m[1]))];
-const jsAll = ['static/site.js', 'static/admin.js'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('');
-const htmlAll = ['templates/index.html', 'templates/admin.html'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('');
+const jsAll = ['static/site.js', 'static/zone.js', 'static/admin.js']
+  .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('');
+const htmlAll = ['templates/index.html', 'templates/zone.html', 'templates/admin.html']
+  .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('');
 const unused = classes.filter((c) => !jsAll.includes(c) && !htmlAll.includes(c));
 console.log(`style.css: 定义了 ${classes.length} 个类，未被使用的: ${unused.length ? unused.join(', ') : '无'}`);
 

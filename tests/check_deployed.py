@@ -151,7 +151,7 @@ def main():
     code, _, _, _, _ = fetch("/api/admin")
     report("ok" if code == 401 else "fail", "未登录访问 /api/admin",
            "返回 %s（应为 401）" % code)
-    code, body, _, _, _ = fetch("/admin")
+    code, body, _, _, _ = fetch("/nya-0508")
     report("ok" if code == 200 and "管理终端" in body.decode("utf-8", "replace") else "fail",
            "后台登录页能打开", "返回 %s" % code)
     code, body, _, _, _ = fetch("/api/auth")
