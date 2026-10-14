@@ -266,36 +266,6 @@
   </div>
 </div>
 
-<!-- 服务型分区（代肝/剪辑/PS）：点「加微信下单」弹这个。
-     ⚠️ 这里以前是"复制一段下单文案发给我" —— 但客户还没加我微信，那段话发给谁？
-        走不通。改成让他加我微信，并把"该说什么"直接摆在他眼前。 -->
-<div class="modal-mask" id="orderModal">
-  <div class="modal">
-    <h3 id="orderTitle">想约这一档？加我微信就行</h3>
-    <p class="modal-sub">加上之后，把下面这句话发我一下，我马上安排。</p>
-
-    <p class="say-box" id="orderSay">我要 精托托管</p>
-
-    <div class="done-wechat" id="orderWechatBox">
-      <img id="orderQr" alt="我的微信二维码" hidden>
-      <span class="hint" id="orderQrCaption" hidden>长按识别<br>（部分浏览器支持）</span>
-      <div class="done-wechat-text">
-        <p class="done-wechat-title">加我微信</p>
-        <p class="hint" id="orderWechatHint">长按上面的二维码就能加我。</p>
-        <p class="done-wechat-id">微信号：<b id="orderWechat"></b></p>
-        <div class="done-wechat-actions">
-          <button class="button small ghost" id="copyOrderWechat">复制微信号</button>
-          <button class="button small ghost" id="copyOrderSay">复制这句话</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal-actions">
-      <button class="button primary" id="closeOrder">知道了</button>
-    </div>
-  </div>
-</div>
-
 <!-- 复制失败时的兜底弹窗（微信内置浏览器很常见），让客户长按手动复制 -->
 <div class="modal-mask" id="copyModal">
   <div class="modal">

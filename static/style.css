@@ -534,16 +534,6 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .footer-wechat img { width: 104px; height: 104px; }
 }
 
-/* 「加微信下单」弹窗里那句现成的话：客户加上我之后照着发就行 */
-.say-box {
-  margin: 14px 0 0; padding: 14px 16px;
-  background: rgba(var(--accent-rgb), .10);
-  border: 1px dashed rgba(var(--accent-rgb), .55);
-  border-radius: 12px;
-  font-size: 17px; font-weight: 700; color: var(--accent);
-  text-align: center; word-break: break-all;
-}
-
 /* 预约成功弹窗里的「加我微信」区（主行动）—— 客户主动加我，双向都能找到人 */
 .done-wechat {
   display: flex; gap: 14px; align-items: flex-start;

@@ -20,7 +20,8 @@
         <input type="password" id="password" autocomplete="current-password" placeholder="请输入密码" required>
       </div>
       <button class="button primary full" type="submit" id="loginBtn">进入管理终端</button>
-      <p class="hint" id="loginHint" style="margin-top:14px">首次使用的初始密码写在 app.py 里，登录后请到「安全与备份」修改。</p>
+      <!-- 这个 p 平时是空的：登录失败时由 admin.js 把错误信息写进来（所以别删元素，只清空文字） -->
+      <p class="hint" id="loginHint" style="margin-top:14px"></p>
     </form>
     <p class="hint" style="margin-top:18px"><a href="/" style="color:var(--accent)">← 返回公开主页</a></p>
   </div>

@@ -295,8 +295,6 @@ function renderServicePrices() {
       <h3>${escapeHtml(it.name)}</h3>
       <div class="price-text">${escapeHtml(it.price || '价格私聊')}</div>
       <p>${escapeHtml(it.note || '')}</p>
-      <button class="button ghost small" data-order="${escapeHtml(it.name)}"
-              data-order-price="${escapeHtml(it.price || '')}">加微信下单</button>
     </article>`).join('')
     || '<div class="empty-state">还没设置主推档位。去后台「分区管理 → 编辑 → 价目表」勾几个 ⭐ 主推。</div>';
 
@@ -444,44 +442,6 @@ function wechatAddHint(hasQr, tail) {
   return `长按二维码识别加我；<b>识别不出来就点下面的「复制微信号」</b>。${tail}`;
 }
 
-/**
- * 服务型分区的「加微信下单」弹窗。
- * 把客户看中的那一档写成一句现成的话（"我要 精托托管（100R/月）"），
- * 他加上我之后照着发就行，不用自己想措辞。
- */
-function openOrderModal(itemName, itemPrice) {
-  const site = state.site || {};
-  const say = '我要 ' + itemName + (itemPrice ? `（${itemPrice}）` : '');
-
-  $('#orderTitle').textContent = `想约「${itemName}」？加我微信就行`;
-  $('#orderSay').textContent = say;
-
-  // 二维码：有就显示（微信里长按能识别），没有就只给微信号
-  const qr = site.wechatQr || '';
-  const qrImg = $('#orderQr');
-  if (qrImg) {
-    if (qr) { qrImg.src = qr; qrImg.hidden = false; }
-    else { qrImg.hidden = true; qrImg.removeAttribute('src'); }
-  }
-  const qrCap = $('#orderQrCaption');
-  if (qrCap) qrCap.hidden = IN_WECHAT || !qr;
-
-  const wxEl = $('#orderWechat');
-  if (wxEl) wxEl.textContent = site.wechat || '（还没设置微信号）';
-
-  // 指导语跟着环境走（和预约成功弹窗同一套判断）
-  const hint = $('#orderWechatHint');
-  if (hint) hint.innerHTML = wechatAddHint(!!qr, '加上之后把上面那句话发我。');
-  const copyWx = $('#copyOrderWechat');
-  if (copyWx) {
-    copyWx.classList.toggle('primary', !IN_WECHAT);
-    copyWx.classList.toggle('ghost', IN_WECHAT);
-  }
-  const box = document.querySelector('#orderModal .done-wechat');
-  if (box) box.classList.toggle('compact', !IN_WECHAT);
-
-  $('#orderModal').classList.add('open');
-}
 
 function currentContactType() {
   const el = $('#bookContactType');
@@ -838,14 +798,6 @@ function bindEvents() {
     if (e.target === $('#imageModal')) $('#imageModal').classList.remove('open');
   });
 
-  // service 类分区：点「加微信下单」→ 弹出加微信窗，并把他该说的那句话摆出来。
-  // ⚠️ 以前是"复制一段下单文案发给我"：客户还没加我微信，那段话根本发不出去（走不通），
-  //    现在改成他能做到的第一步 —— 加微信，然后照着屏幕上的话说。
-  $('#featuredCards').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-order]');
-    if (!btn) return;
-    openOrderModal(btn.dataset.order, btn.dataset.orderPrice || '');
-  });
 
   const copyWechat = () => {
     if (!state.site.wechat) return toast('还没设置微信号，请先在后台填写。', true);
@@ -854,17 +806,6 @@ function bindEvents() {
   $('#copyWechat').addEventListener('click', copyWechat);
   $('#footerWechat').addEventListener('click', copyWechat);
   // 首屏主按钮现在两种分区都是锚点跳转（#schedule / #servicePriceBlock），交给浏览器处理 ✓
-
-  $('#copyOrderWechat').addEventListener('click', () => {
-    if (!state.site.wechat) return toast('还没设置微信号，请先在后台填写。', true);
-    copyText(state.site.wechat, `微信号已复制：${state.site.wechat}`);
-  });
-  $('#copyOrderSay').addEventListener('click',
-    () => copyText($('#orderSay').textContent, '已复制，加上我之后粘给我就行'));
-  $('#closeOrder').addEventListener('click', () => $('#orderModal').classList.remove('open'));
-  $('#orderModal').addEventListener('click', (e) => {
-    if (e.target === $('#orderModal')) $('#orderModal').classList.remove('open');
-  });
 
   $('#selectAllCopy').addEventListener('click', () => {
     const box = $('#copyTextBox');
