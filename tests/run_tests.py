@@ -180,7 +180,21 @@ def main():
         if kept:
             check("时段内容完全一致", kept[0]["start"] == target and kept[0]["note"] == "重启后应该还在")
 
-        # ---------------- 第九阶段：并发读写 ----------------
+        # ---------------- 第九阶段：文案可改 + 图片显示位置（第四刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 文案测试（客户看到的每一句话都能在后台改 + 图片九宫格位置）")
+        print("=" * 60, flush=True)
+        txtcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_texts.py")], env=tenv)
+
+        # ---------------- 第十阶段：服务条款页（第四刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 服务条款测试（/terms 渲染 + 后台增删改排序 + 备份恢复）")
+        print("=" * 60, flush=True)
+        trmcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_terms.py")], env=tenv)
+
+        # ---------------- 第十一阶段：并发读写 ----------------
         print("\n" + "=" * 60)
         print(" 并发测试（客户看时间表的同时，你在后台锁定/取消时段）")
         print("=" * 60, flush=True)
@@ -191,8 +205,8 @@ def main():
         check("并发下没有报错", concode == 0)
 
         print("\n本阶段：通过 %d 项，失败 %d 项" % (ok, fail))
-        return (code or bcode or zcode or ccode or glcode or cflcode or incode or concode
-                or (1 if fail else 0))
+        return (code or bcode or zcode or ccode or glcode or cflcode or incode or txtcode
+                or trmcode or concode or (1 if fail else 0))
     finally:
         stop_server(proc)
         shutil.rmtree(TEST_DATA, ignore_errors=True)

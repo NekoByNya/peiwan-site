@@ -133,6 +133,12 @@ DEFAULT_PROFILE = {
     "heroImage": "",                 # 主页首屏主视觉（选填，PNG 透明底最好看）
     "background": "",                # 首页整页背景图（各分区自己的背景图在 zones.profile 里）
     "backgroundDim": 72,             # 首页背景压暗程度（0-90）
+    # ★ 图片「显示位置」（3×3 九宫格，见 POSITION_CHOICES）：
+    #   这几张图会被裁掉一部分才铺得满，所以给一个"保留哪一块"的开关。
+    #   默认 center = 和以前一模一样，没设置过的人看不出任何变化。
+    "avatarPosition": "center",      # 头像（object-fit: cover）
+    "backgroundPosition": "center",  # 首页整页背景图（background-size: cover）
+    "heroImagePosition": "center",   # 主页首屏主视觉（object-fit: cover）
 }
 
 # 默认大类（store key='categories'）。大类**不允许删除**，只能改名 / 改类型 / 排序，
@@ -173,6 +179,246 @@ GALLERY_LINK_MAX = 300
 #   screenshot → 游戏截图 / review → 老板评价
 DEFAULT_GALLERY_CATEGORY = "screenshot"
 
+# ============================================================================
+# ★ 文案表（store key='texts'）：客户能看到的每一句中文，全都从这里来
+#
+#   为什么要有它：在这之前，这些句子是**写死在** templates/*.html 和 static/*.js 里的，
+#   主人想把「看看我能做什么」改成别的说法，得先学会改代码 —— 这不合理。
+#   现在它们集中在这一份目录里，一份目录三处用：
+#     · 后台「文案」标签页照它**自动生成**输入框（不用一个个写 HTML）；
+#     · 前台 site.js / zone.js 按 key 取值（服务端把默认值补齐了，前端不用兜底）；
+#     · 备份/恢复到 store 的 texts 里。
+#
+#   ⚠️ 三条约定（tests\test_texts.py 里守着它们）：
+#     1. **文案是纯文本，不认 HTML**。主人粘贴一句带 <b> 的话，页面上就会原样看到尖括号 ——
+#        宁可难看一点，也不能让"文案"变成一段能执行/能注入的代码（那是 XSS 的入口）。
+#     2. 默认值里的 **{name} / {zone} / {max} / {wechat}** 是"变量"，前台会替换成
+#        昵称 / 分区名 / 一次最多几小时 / 微信号。改文案时别把占位符删掉，
+#        否则那句话就和实际规则对不上了（比如"一次最多 6 小时"其实早就改成 10 了）。
+#     3. 每条都有长度上限（max），超了截断：防止有人往这里塞一整篇小说。
+#
+#   存的时候**只存"和默认不一样"的那几句**（见 clean_texts）：
+#   空字符串、或者填得和默认一字不差，都不写进数据库 —— 这样
+#   "没改过的人完全看不出差别"，而且以后默认值改好了，他那边也跟着变好。
+TEXT_GROUPS = [
+    {"id": "home", "name": "① 主页", "hint": "客户打开个人主页（/）时看到的话。", "fields": [
+        {"key": "navServices", "label": "顶部导航：我能做什么（点了跳到服务卡片）", "default": "我能做什么", "max": 20},
+        {"key": "navWhy", "label": "顶部导航：为什么找我", "default": "为什么找我", "max": 20},
+        {"key": "navAbout", "label": "顶部导航 + 页脚小链接：关于我", "default": "关于我", "max": 20},
+        {"key": "heroIntro", "label": "首屏大标题下面那行自我介绍（{name} = 你的昵称）", "default": "我是 {name}，下面这些都是我一个人在做。", "max": 120},
+        {"key": "heroCta", "label": "首屏主按钮：看看我能做什么", "default": "看看我能做什么", "max": 20},
+        {"key": "servicesHint", "label": "「我能做什么」右边那行小字", "default": "点开看详情与价目", "max": 40},
+        {"key": "whyTitle", "label": "「为什么找我。」那一段的大标题", "default": "为什么找我。", "max": 40},
+        {"key": "whyHint", "label": "「为什么找我」右边那行小字", "default": "个人接单 · 无中间商", "max": 40},
+        {"key": "aboutTitle", "label": "「关于我」那一块的大标题（{name} = 你的昵称）", "default": "你好，我是 {name}。", "max": 60},
+        {"key": "wechatCardHint", "label": "首页二维码上面那句话", "default": "加我微信，直接聊需求", "max": 40},
+    ]},
+    {"id": "zone-price", "name": "② 分区页 · 价目", "hint": "每个分区页（/z/xxx）的价格那一段。", "fields": [
+        {"key": "zoneCtaBooking", "label": "分区页首屏主按钮（陪玩类）", "default": "看空档时间", "max": 20},
+        {"key": "zoneCtaService", "label": "分区页首屏主按钮（代肝 / 剪辑类）", "default": "看价目表", "max": 20},
+        {"key": "priceTitle", "label": "陪玩三档价格那一段的标题", "default": "玩的方式你选，陪伴我来。", "max": 40},
+        {"key": "priceHint", "label": "价格标题右边那行小字", "default": "明码标价 · 个人直约 · 按实际游玩时间计费", "max": 60},
+        {"key": "servicePriceTitle", "label": "服务制价目表的标题（{zone} = 游戏名 / 分区名）", "default": "{zone} · 价目表", "max": 60},
+        {"key": "servicePriceHint", "label": "价目表标题右边那行小字（大类的小字会自动接在后面）", "default": "加微信直接下单", "max": 40},
+        {"key": "featuredTitle", "label": "「主推档位」小标题", "default": "主推档位", "max": 20},
+        {"key": "priceSheetTitle", "label": "「完整价目表」小标题", "default": "完整价目表", "max": 20},
+        {"key": "priceSheetHint", "label": "价目表上方那行小提示", "default": "点标题展开 / 收起", "max": 40},
+        {"key": "priceSheetImageLabel", "label": "价目表长图上面那个标签", "default": "完整价目表（长图）", "max": 40},
+        {"key": "galleryLinkBadge", "label": "展示墙图片右上角的角标（只有带外链的图才有）", "default": "点开看 ↗", "max": 20},
+        {"key": "galleryEmpty", "label": "这个分区还没传展示墙图片时", "default": "这个分区的展示墙还在装修中，先来找我玩一局吧。", "max": 60},
+        {"key": "promiseTitleBooking", "label": "「服务承诺」那一段的标题（陪玩类）", "default": "下单前，聊清楚这几件事", "max": 30},
+        {"key": "promiseTitleService", "label": "「服务说明」那一段的标题（代肝 / 剪辑类）", "default": "服务说明", "max": 30},
+    ]},
+    {"id": "booking", "name": "③ 下单流程", "hint": "时间表、选模式弹窗、锁定成功弹窗里的话。", "fields": [
+        {"key": "scheduleTitle", "label": "时间表那一段的标题", "default": "你的时间，我来配合。", "max": 40},
+        {"key": "scheduleHint", "label": "时间表标题右边那行小字", "default": "每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期", "max": 60},
+        {"key": "sharedNotice", "label": "时间表上面那条灰底提示", "default": "这份时间表是全部服务共用的：不管约哪个游戏，占的都是同一批时段。", "max": 80},
+        {"key": "legendFree", "label": "图例：可预约", "default": "可预约", "max": 12},
+        {"key": "legendBooking", "label": "图例：已预约", "default": "已预约", "max": 12},
+        {"key": "legendRest", "label": "图例：休息 / 不接单", "default": "休息 / 不接单", "max": 16},
+        {"key": "legendPast", "label": "图例：已过去", "default": "已过去", "max": 12},
+        {"key": "slotFree", "label": "格子上写的字：可预约", "default": "可预约", "max": 8},
+        {"key": "slotBooking", "label": "格子上写的字：已预约", "default": "已预约", "max": 8},
+        {"key": "slotRest", "label": "格子上写的字：休息", "default": "休息", "max": 8},
+        {"key": "slotPast", "label": "格子上写的字：已过去", "default": "已过去", "max": 8},
+        {"key": "slotClosed", "label": "格子上写的字：停接（你关了接单开关时）", "default": "停接", "max": 8},
+        {"key": "slotSelected", "label": "格子被选中时写的字", "default": "已选", "max": 8},
+        {"key": "selectionHint", "label": "选时间区那行提示（{max} = 一次最多几小时）", "default": "先点选想玩的时间，连续或分开都可以（一次最多 {max} 小时）。", "max": 80},
+        {"key": "nextStep", "label": "「下一步：选择模式」按钮", "default": "下一步：选择模式", "max": 20},
+        {"key": "modeTitle", "label": "选模式弹窗的标题", "default": "选择模式", "max": 20},
+        {"key": "modeHint", "label": "选模式弹窗里那句说明", "default": "选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。", "max": 80},
+        {"key": "contactTypeLabel", "label": "「联系方式」下拉的标签", "default": "联系方式", "max": 20},
+        {"key": "contactTypeHint", "label": "下拉下面那行小字", "default": "填哪个都行，方便联系。", "max": 40},
+        {"key": "contactLabel", "label": "联系方式输入框的标签", "default": "你的联系方式（必填）", "max": 30},
+        {"key": "contactHint", "label": "联系方式输入框下面那行小字", "default": "请填真实能加上的号——填错了我加不到你，这单就联系不上了（也可以直接加我，见页面顶部）", "max": 120},
+        {"key": "contactPhWechat", "label": "联系方式输入框里的灰字（选微信时）", "default": "你的微信号", "max": 30},
+        {"key": "contactPhXianyu", "label": "联系方式输入框里的灰字（选闲鱼时）", "default": "你的闲鱼用户名", "max": 30},
+        {"key": "contactPhQq", "label": "联系方式输入框里的灰字（选 QQ 时）", "default": "你的 QQ 号", "max": 30},
+        {"key": "noteLabel", "label": "备注输入框的标签", "default": "备注（选填）", "max": 20},
+        {"key": "notePlaceholder", "label": "备注输入框里的灰字", "default": "例如：想玩大坝、晚上可能晚到 10 分钟", "max": 60},
+        {"key": "lockWarn", "label": "选模式弹窗底部那条警告", "default": "⚠️ 点「立即锁定时间」后，这几个小时会立刻被锁定，别人就点不动了；如需取消请微信联系我。", "max": 120},
+        {"key": "doneTitle", "label": "锁定成功弹窗的标题", "default": "时间已锁定 ✅", "max": 30},
+        # ⚠️ 这一句的真实默认值是"时间预约成功Ciallo～"：以前 HTML 里写的是另一句，
+        #    但 zone.js 在打开弹窗前会把它覆盖掉 —— 客户实际看到的一直是 Ciallo 这句，
+        #    所以默认值取"客户现在真正看到的那句"（换个默认值 = 悄悄改了他的话）。
+        {"key": "doneNote", "label": "锁定成功弹窗的第一句（以前是「时间预约成功Ciallo～(∠・ω< )⌒★」）", "default": "时间预约成功Ciallo～(∠・ω< )⌒★", "max": 60},
+        {"key": "bookedToast", "label": "锁定成功后右下角弹的那句小提示", "default": "时间已锁定，记得加我微信", "max": 40},
+        {"key": "doneWechatTitle", "label": "成功弹窗里「下一步：加我微信」", "default": "下一步：加我微信", "max": 30},
+        {"key": "wechatAddTail", "label": "加上好友之后要做什么（接在加我方式后面）", "default": "加上之后，把上面的时间发我一下就行。", "max": 60},
+        {"key": "wechatAddQr", "label": "「怎么加我」：在微信里打开、而且传了二维码", "default": "长按二维码识别加我；识别不出来就点下面的「复制微信号」。", "max": 60},
+        {"key": "wechatAddNoQr", "label": "「怎么加我」：在微信里打开、但没传二维码", "default": "搜下面的微信号加我。", "max": 40},
+        {"key": "wechatAddBrowser", "label": "「怎么加我」：在浏览器里打开（长按识别不了二维码）", "default": "若网页无法识别二维码，请直接复制我的微信并添加", "max": 60},
+        {"key": "doneCloseHint", "label": "锁定成功弹窗最下面那行小字", "default": "要取消或改时间，微信上跟我说一声就行。", "max": 60},
+    ]},
+    {"id": "common", "name": "④ 页脚与通用", "hint": "每个页面都会用到的那些话（页脚、微信号、接单状态…）。", "fields": [
+        {"key": "wechatLabel", "label": "「微信号：」这个前缀（首页、分区页、条款页都用它）", "default": "微信号：", "max": 16},
+        {"key": "wechatCopyTip", "label": "微信号旁边的小提示（在微信里打开时）", "default": "长按可复制", "max": 20},
+        {"key": "wechatCopyTipBrowser", "label": "微信号旁边的小提示（在浏览器里打开时）", "default": "点一下复制，去微信粘贴", "max": 30},
+        {"key": "wechatCta", "label": "「加微信」按钮（首页、分区页各一个）", "default": "加微信", "max": 12},
+        {"key": "wechatQrAlt", "label": "二维码图片的说明文字（图片加载失败 / 读屏软件念的就是它）", "default": "我的微信二维码", "max": 30},
+        {"key": "footerQrCaption", "label": "页脚二维码下面那行小字", "default": "长按上面的二维码就能加我（部分浏览器支持）", "max": 60},
+        {"key": "footerTip", "label": "页脚「加我之后直接说…」那句", "default": "加我之后直接说：哪个游戏 / 哪一档，我来安排。", "max": 60},
+        {"key": "footerDisclaimer", "label": "每个页面最下面那行版权说明", "default": "本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。", "max": 100},
+        {"key": "footerZoneLabel", "label": "分区页页脚「当前页面：」这个前缀", "default": "当前页面：", "max": 16},
+        {"key": "footerHintBooking", "label": "分区页页脚那句（陪玩类）", "default": "选好时间点一下就锁上了，我这边立刻收到消息。", "max": 60},
+        {"key": "footerHintService", "label": "分区页页脚那句（代肝 / 剪辑类）", "default": "还没想好要哪一档？加我问一句，说清需求和工期就行。", "max": 60},
+        {"key": "footerHomeHint", "label": "首页页脚那句（你没填首页副标题时用它）", "default": "陪玩 / 代肝 / 剪辑 / 设计 / 建站 —— 都是我一个人做。", "max": 60},
+        {"key": "acceptingOn", "label": "接单状态小字（开着接单时）", "default": "开放接单", "max": 12},
+        {"key": "acceptingOff", "label": "接单状态小字（关掉接单时）", "default": "暂时休整", "max": 12},
+        {"key": "navTerms", "label": "「服务条款」这个链接的名字（顶部导航 + 页脚都用它）", "default": "服务条款", "max": 20},
+        {"key": "termsUpdatedLabel", "label": "条款页上「最后更新：」这个前缀", "default": "最后更新：", "max": 16},
+        {"key": "termsBackHome", "label": "条款页底部回主页的链接", "default": "← 回主页看我的服务", "max": 30},
+    ]},
+    {"id": "empty", "name": "⑤ 空状态（没配好时才出现）", "hint": "这些只在「这一块还没填」的时候才给客户看到，一般保持默认就行。", "fields": [
+        {"key": "servicesEmpty", "label": "一个分区都还没有时，首页显示这句", "default": "还没有分区。去后台「分区管理」新建一个，这里就会出现卡片。", "max": 80},
+        {"key": "zoneCardDefault", "label": "分区卡片没填「一句话简介」时显示这句", "default": "点开看详情与价目", "max": 40},
+        {"key": "priceEmptyBooking", "label": "陪玩分区还没填三档价格时", "default": "这个分区还没有设置报价，去后台加一档。", "max": 60},
+        {"key": "priceEmptyService", "label": "服务制分区还没设主推档位时", "default": "还没设置主推档位。去后台「分区管理 → 编辑 → 价目表」勾几个 ⭐ 主推。", "max": 80},
+        {"key": "groupsEmpty", "label": "服务制分区还没有价目表时", "default": "还没有价目表。去后台「分区管理 → 编辑 → 价目表」加一组，或者用「批量粘贴导入」。", "max": 80},
+        {"key": "promiseEmptyBooking", "label": "陪玩分区没填服务承诺时", "default": "还没有填写服务承诺，去后台这个分区的资料里补上。", "max": 60},
+        {"key": "promiseEmptyService", "label": "服务制分区没填服务说明时", "default": "还没有填写服务说明，去后台这个分区的资料里补上。", "max": 60},
+        {"key": "wechatEmpty", "label": "后台还没填微信号时的占位", "default": "（还没设置微信号）", "max": 20},
+    ]},
+]
+
+# 拍平出来的两份表：key → 默认那句话 / key → 长度上限
+DEFAULT_TEXTS = {f["key"]: f["default"] for g in TEXT_GROUPS for f in g["fields"]}
+TEXT_LIMITS = {f["key"]: int(f.get("max") or 120) for g in TEXT_GROUPS for f in g["fields"]}
+TEXTS_STORE_KEY = "texts"        # store 里存"主人改过的那几句"（JSON 对象）
+
+# ============================================================================
+# ★ 图片「显示位置」：3×3 九宫格（左上 / 上 / 右上 / 左 / 居中 / 右 / 左下 / 下 / 右下）
+#
+#   为什么需要它：有些图会被**裁掉一部分**才铺得满（背景图是 background-size: cover，
+#   头像和首屏图是 object-fit: cover）。以前客户想让它"露中间那块"，主人只能自己
+#   先在 PS 里裁好再传 —— 现在点一下九宫格就行。
+#
+#   哪些图需要（我自己逐个去看 CSS 确认过的）：
+#     · 首页整页背景图（.site-bg：background-size: cover）        → 要
+#     · 头像（.avatar：object-fit: cover）                        → 要
+#     · 首页首屏主视觉 / 分区首屏主视觉（.hero-media img：object-fit: cover）→ 要
+#     · 分区页背景图（.zone-hero-bg：background-size: cover）      → 要
+#   哪些图**不需要**（所以后台也没给它们放九宫格）：
+#     · 微信二维码（object-fit: contain —— 裁了就有扫不出来的风险，必须完整）
+#     · 微信分享图（微信/QQ 自己裁卡片，我们控制不了）
+#     · 价目表长图（整张缩放显示，不裁）
+#     · 展示墙的图（.gallery-item img 是 170px 高的缩略图，一批图共用一套样式；
+#       单张单独调要给它加一列字段 + 一堆 UI，先不做，见交接说明的取舍表）
+#
+#   存哪：**跟着图片走** —— 首页那几张存在全局资料里（profile），
+#   分区那两张存在分区资料里（zones.profile）。这样"保存主页设置 / 保存这个分区"
+#   就顺手把它一起存了，而且备份不用改（profile 整个都在备份里）。
+#   默认 "center" = 和以前一模一样，所以老数据/没设置过的人看不出任何变化。
+POSITION_DEFAULT = "center"
+POSITION_CHOICES = [
+    ("left top", "左上"), ("center top", "上"), ("right top", "右上"),
+    ("left center", "左"), ("center", "居中"), ("right center", "右"),
+    ("left bottom", "左下"), ("center bottom", "下"), ("right bottom", "右下"),
+]
+POSITION_VALUES = [value for value, _name in POSITION_CHOICES]
+# 单个关键字也认（"top" = "center top"），省得写接口/写测试的人踩坑
+POSITION_ALIASES = {"center center": "center", "top": "center top", "bottom": "center bottom",
+                    "left": "left center", "right": "right center"}
+PROFILE_POSITION_KEYS = ("avatarPosition", "backgroundPosition", "heroImagePosition")
+ZONE_POSITION_KEYS = ("backgroundPosition", "heroImagePosition")
+
+# ============================================================================
+# ★ 服务条款（store key='terms'）：/terms 那一页的全部内容
+#
+#   为什么要有这一页：主人是**个人接单**，客户问"账号安全吗""能退款吗""封号怎么办"
+#   总要有个地方能指着看。写在页面上比每次微信里重复解释一遍省事得多，
+#   而且能直接发链接（有 og 标签，微信里转发有卡片）。
+#
+#   语气要求（主人明确说的）：**实在一点，不要写成吓人的法律文书**。
+#   所以下面这份默认条款是"一个接单的人在跟客户把话说清楚"的口气：
+#   该保护自己的地方写清楚（账号你保管、我只按约定操作、游戏官方的处理我不背），
+#   但不堆免责声明。
+#
+#   结构：{"title": 标题, "updated": "YYYY-MM-DD", "sections": [{"heading","body"}, …]}
+#   "updated" 是**你最后一次保存条款那天**（北京时间）自动写上的，不用自己填。
+TERMS_STORE_KEY = "terms"
+TERMS_TITLE_MAX = 40             # 标题最多几个字
+TERMS_HEADING_MAX = 40           # 每节小标题
+TERMS_BODY_MAX = 3000            # 每节正文（够写很长一段了）
+TERMS_SECTION_MAX = 30           # 最多几节（再多就不是条款是小说了）
+DEFAULT_TERMS = {
+    "title": "服务条款",
+    # updated 出厂是空的：第一次保存时才会写上那天。页面上不显示空日期。
+    "updated": "",
+    "sections": [
+        {"heading": "一、我能提供什么",
+         "body": "这里是我一个人的服务页面：陪玩、代肝、视频剪辑 / PS / 设计 / 建站。\n"
+                 "所有服务都由我本人完成，没有工作室、没有中间商，你付的钱里没有「转包差价」这一项。\n\n"
+                 "页面上的价目是明码标价的：陪玩按小时、代肝按包月或按量、剪辑和设计按项目。\n"
+                 "具体到你的这一单，以我们在微信上聊定的为准 —— 页面上写的是常规价格，\n"
+                 "特殊情况（加急、超长时间、特殊要求）我会先说清楚再动手。"},
+        {"heading": "二、下单与确认",
+         "body": "陪玩类：你在页面上挑好时段，点「立即锁定时间」并留下能加上的联系方式，\n"
+                 "那几个小时就归你了（别人约不到），之后我会加你确认细节。\n\n"
+                 "代肝、剪辑、设计、建站这类：页面上没有时间表，加我微信说清需求，\n"
+                 "我报个价，你点头我就开工。\n\n"
+                 "有一点请你知道：页面上的「已锁定」是占位，不等于我已经确认接单。\n"
+                 "我会尽快（一般当天）通过你留的方式联系你；如果一直联系不上，\n"
+                 "那几个小时可能会被放回去，让别人也能约。"},
+        {"heading": "三、付款",
+         "body": "网站本身不收款，也没有在线支付。付钱只有一种方式：我们在微信上说好，\n"
+                 "你直接转给我（或者走闲鱼下单）。\n\n"
+                 "什么时候付都行：开工前付、或者这一次服务结束后付，你自己挑，我不催。\n\n"
+                 "价格以我们聊定的为准。还没开始服务就想退，全额退给你；\n"
+                 "已经做了一部分，就按做过的部分算，剩下的退给你。"},
+        {"heading": "四、取消与改期",
+         "body": "陪玩：想改时间或者取消，提前 2 小时在微信上跟我说一声就行，\n"
+                 "那几格我放回去，你可以重新选（提前说是为了不让那段时间白空着）。\n\n"
+                 "代肝 / 剪辑 / 设计：还没开工之前随时可以取消，一分钱不收；\n"
+                 "已经开工了，就按做了多少算多少，剩下的退给你。\n\n"
+                 "如果是我这边临时有事（生病、设备故障、突发情况），我会第一时间告诉你，\n"
+                 "把时间还给你，或者按你的意思顺延 —— 那是我的问题，不会算在你头上。"},
+        {"heading": "五、账号安全（请你一定要看完）",
+         "body": "需要我登录你的游戏账号时：\n\n"
+                 "· 账号和密码请你自己保管，我只在你授权的那段时间里按约定操作\n"
+                 "  （做什么、做多少，我们事先说清楚）；\n"
+                 "· 我不会改你的密码、不会动你的绑定手机和邮箱、不会把你的账号信息告诉任何人；\n"
+                 "· 服务结束后，请你立刻改一次密码（这一步很重要，别嫌麻烦）；\n"
+                 "· 进度我可以用截图 / 录屏给你看，包月代肝按约定返图。\n\n"
+                 "账号出现异常请第一时间告诉我，我会停下手里的事跟你一起看。"},
+        {"heading": "六、责任范围",
+         "body": "说得实在一点：\n\n"
+                 "· 我按约定操作、按时交付；因我个人原因耽误的时间，我会补回来。\n"
+                 "· 游戏本身有随机性（掉线、服务器维护、官方规则调整），这些不在我能控制的范围内。\n"
+                 "  我不会用任何外挂、脚本或违反游戏规则的方式；\n"
+                 "  但如果账号是因为别处的违规行为被官方处理，那部分不在我这边。\n"
+                 "· 陪玩不等于「保证上分」：我会认真陪你打，但不承诺每一局的结果。\n"
+                 "· 遇到不可抗力（大面积断网、平台故障）当天做不完，我们约个时间顺延，\n"
+                 "  或者把没做的部分退给你。\n"
+                 "· 我能承担的上限就是这一单本身的费用 —— 我不希望你因为一次陪玩\n"
+                 "  承担超出这个范围的东西，反过来我也一样。"},
+        {"heading": "七、怎么找我",
+         "body": "微信：{wechat}（页面顶部的「加微信」点一下就能复制）。\n\n"
+                 "急事直接微信上说，我看到了都会回；白天可能在打单，回得慢一点，别急。\n\n"
+                 "这一页有更新时我会改这里并写上日期，继续用我的服务就视为你认可以上的约定。"},
+    ],
+}
+
 # 分区资料里"允许出现"的字段（保存时按这份白名单清洗，避免奇怪的键越存越多）
 ZONE_TEXT_KEYS = {
     "game": 30,            # 游戏名 / 服务名（预约文案里要用："想约守望先锋 PC 端陪玩"）
@@ -203,6 +449,9 @@ DEFAULT_ZONE_PROFILE = {
     "shareImage": "",                # 该分区自己的微信分享缩略图（1200×630）
     "priceSheetImage": "",           # 价目表长图（服务型分区用）
     "backgroundDim": 72,             # 背景压暗程度（0-90）
+    # ★ 图片「显示位置」（3×3 九宫格）：分区这一套只管它自己的两张会裁的图
+    "backgroundPosition": "center",  # 分区背景图（background-size: cover）
+    "heroImagePosition": "center",   # 分区首屏主视觉（object-fit: cover）
     "prices": [],                    # 只有 kind=booking 的分区用：三档价格
     "priceGroups": [],               # 只有 kind=service 的分区用：分组价目表
     "featured": [],                  # 「主推档位」：从 priceGroups 里挑出来的 item id（最多 3 个）
@@ -334,6 +583,49 @@ def clean_link(raw):
     if not (lowered.startswith("http://") or lowered.startswith("https://")):
         return ""
     return text[:GALLERY_LINK_MAX]
+
+def clean_image_position(value):
+    """
+    ★ 把「图片显示位置」洗成 9 个合法值之一（左上 / 上 / 右上 / 左 / 居中 / 右 / 左下 / 下 / 右下）。
+
+    返回的是**能直接写进 CSS 的字符串**（"left top"、"center"…），前台拿到就塞进
+    `background-position` / `object-position`，不做任何转换 —— 少一层转换就少一处能对不上的地方。
+
+    认不出来的一律退回 "center"，这一点是故意的：
+      · "center" 就是这一版之前的行为（CSS 里本来就写着 background-position: center），
+        所以老数据、脏数据、有人手改过数据库 —— 最坏的结果也只是"回到原来的观感"，不会变形。
+      · 另外顺手认几个简写（"top" = "center top"），省得写接口、写测试的人踩坑。
+
+    用在哪：get_profile()（首页那三张）和 clean_zone_profile()（分区那两张）读取时各洗一遍，
+    所以**库里存了脏值也不怕** —— 读出来永远是合法的 9 个值之一。
+    """
+    text = " ".join(str(value or "").strip().lower().split())
+    text = POSITION_ALIASES.get(text, text)
+    return text if text in POSITION_VALUES else POSITION_DEFAULT
+
+
+def clean_texts(raw):
+    """
+    ★ 把前端传来的文案洗一遍：只认目录里有的 key，去首尾空白、按各自的上限截断。
+
+    **空字符串（或者填得和默认一模一样）直接丢掉 = "这一句用默认"**。
+    为什么"和默认一样也不存"：后台的输入框里预填的就是当前生效的那句话，
+    如果原样存下来，主人只是点开看一眼再保存，所有句子就被"钉死"成今天这版默认值了 ——
+    以后默认值改好了（比如换了更好的说法）他那边反而收不到。只存真正改过的，才符合直觉。
+
+    第 2 条约定也在这一层守住：**文案是纯文本**，这里不做任何 HTML 处理（前台会转义）。
+    返回 {key: 文案}，可以直接 json.dumps 进 store。
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for key, default in DEFAULT_TEXTS.items():
+        if key not in raw:
+            continue
+        text = str(raw.get(key) or "").strip()[:TEXT_LIMITS[key]]
+        if not text or text == default:
+            continue
+        out[key] = text
+    return out
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -526,13 +818,21 @@ def get_profile():
         profile = json.loads(row["value"]) if row else dict(DEFAULT_PROFILE)
     merged = dict(DEFAULT_PROFILE)
     merged.update(profile)          # 老数据缺字段时用默认值补齐
+    # ★ 三个「图片显示位置」读出来就洗一遍：后台的九宫格、前台的内联样式、备份
+    #   走的都是这一份数据，所以只要在这里守住，下面就不可能拿到非法值。
+    for key in PROFILE_POSITION_KEYS:
+        merged[key] = clean_image_position(merged.get(key))
     return merged
 
 
 def site_summary():
     """
-    给前台用的"全局资料"精简版（首页、分区页顶部都要它）。
+    给前台用的"全局资料"精简版（首页、分区页、条款页都要它）。
     故意只挑这几个字段：客户信息里只该出现品牌、昵称、微信、头像、信任信号。
+
+    ★ 这里还多带两样"前台每一页都要用"的东西：
+      · texts          —— 客户能看到的每一句中文（默认值已经补齐，见 get_texts）；
+      · imagePositions —— 首页三张图的显示位置（九宫格选出来的那个值）。
     """
     p = get_profile()
     return {
@@ -549,6 +849,18 @@ def site_summary():
         "accepting": bool(p.get("accepting", True)),
         "background": str(p.get("background") or ""),
         "backgroundDim": int(p.get("backgroundDim") or 0),
+        # ★ 下面这两样是"首页、分区页、条款页都要用"的（文案表 / 图片显示位置）。
+        #   ⚠️ 为什么把它们放在中间、而不是放在最后：__PAGE__ 那段 JSON 是**嵌套**的，
+        #   如果一个嵌套对象正好是最后一个键，序列化出来就会出现 "}}" ——
+        #   而 tests\test_zones.py 有一条老断言在查"首页 HTML 里不该有 {{ 或 }} 残留"
+        #   （它防的是模板占位符漏渲染）。嵌套对象后面跟一个字符串字段就永远不会撞上。
+        "texts": get_texts(),
+        # 首页那三张图的显示位置（键名和 profile 里的字段一一对应）
+        "imagePositions": {
+            "avatar": p["avatarPosition"],
+            "background": p["backgroundPosition"],
+            "heroImage": p["heroImagePosition"],
+        },
         "heroImage": str(p.get("heroImage") or ""),      # 主页首屏主视觉（选填，独立于任何分区）
     }
 
@@ -821,6 +1133,9 @@ def clean_zone_profile(raw):
         out[key] = str(raw.get(key) or "")[:300]
     out["highlights"] = _clean_text_list(raw.get("highlights"), limit=12, each=20)
     out["promises"] = _clean_text_list(raw.get("promises"), limit=12, each=200)
+    # ★ 图片显示位置：不是截断就行，得按 9 个合法值校验（认不出来退回 center）
+    for key in ZONE_POSITION_KEYS:
+        out[key] = clean_image_position(raw.get(key))
     try:
         out["backgroundDim"] = max(0, min(90, int(raw.get("backgroundDim", 72))))
     except (TypeError, ValueError):
@@ -2595,6 +2910,12 @@ def build_backup():
         "autoReleaseHours": get_auto_release_hours(),     # ★ 自动释放设置
         "autoReleased": get_auto_released_log(),          # ★ 最近自动释放记录
         "payments": list_payments(),        # ★ 收入流水（老备份里没有这一项 → 恢复时跳过）
+        # ★ 文案表：这里放的是**主人改过的那几句**（没改的不占地方，也不写进来）。
+        #   老备份里没有这一项 → 恢复时跳过，绝不清空他现在的话。
+        "texts": get_text_overrides(),
+        # ★ 服务条款：整份都带上（标题 + 小节 + 最后更新日期）。
+        #   老备份里没有这一项 → 同样跳过，他改过的条款不会被一份老备份冲掉。
+        "terms": terms_view(),
     }
 
 
@@ -2647,6 +2968,21 @@ def apply_backup(data):
         set_auto_release_hours(data.get("autoReleaseHours"))
     if isinstance(data.get("autoReleased"), list):
         _set_auto_released_log(clean_auto_released_log(data["autoReleased"]))
+
+    # ---- ★ 文案表（老备份里没有这一项 → 一句都不动）----
+    # 和 customers / payments 同一条规矩，理由也一样：
+    # 主人一句一句改出来的口气（"看看我能做什么"改成他自己的说法）没有第二份，
+    # 一份老备份不该把它冲回默认。**备份里有 texts 才覆盖**（可能是空字典 = 全是默认）。
+    has_texts = isinstance(data.get("texts"), dict)
+    if has_texts:
+        set_store(TEXTS_STORE_KEY, json.dumps(clean_texts(data["texts"]), ensure_ascii=False))
+
+    # ---- ★ 服务条款（老备份里没有这一项 → 一个字都不动）----
+    has_terms = isinstance(data.get("terms"), dict)
+    if has_terms:
+        # ⚠️ set_store 必须在下面那个 `with _db_lock` **之前**调（它自己也要拿这把锁）。
+        set_store(TERMS_STORE_KEY,
+                  json.dumps(clean_terms(data["terms"])[0], ensure_ascii=False))
 
     zones, zone_images = [], {}
     known_ids = {c["id"] for c in list_categories()}
@@ -2847,6 +3183,9 @@ def apply_backup(data):
             "zones": len(zones), "categories": len(list_categories()),
             "customers": len(customers) if has_customers else len(list_customers()),
             "payments": len(payments) if has_payments else len(list_payments()),
+            # 文案报"自定义了几句"（老备份没带就是现在库里的数），条款报"恢复了几节"
+            "texts": len(get_text_overrides()),
+            "terms": len((terms_view().get("sections") or [])),
             "images": images, "profileRevision": new_rev}, None
 
 
@@ -3370,6 +3709,233 @@ def login_reset(ip):
 
 
 # ============================================================================
+# 二之七、★ 文案表 + 服务条款（客户能看到的每一句中文，都在这一章）
+#
+#   这一章的存在理由只有一个（主人的原话）：
+#     "每一个客户能看到的中文文案，都必须能在后台改。"
+#
+#   两块东西：
+#     · texts（store key='texts'）—— 78 句散落在首页 / 分区页 / 弹窗 / 页脚里的话，
+#       目录写在「一、配置」的 TEXT_GROUPS 里（默认值就是以前写死的那句）。
+#       **只存主人改过的那几句**，空 = 用默认（见 clean_texts）。
+#     · terms（store key='terms'）—— 服务条款页（/terms）的标题 + 小节，
+#       默认内容在「一、配置」的 DEFAULT_TERMS 里。
+#
+#   ⚠️ 写库的两条规矩（都是踩过的坑，别再犯）：
+#     1. 这里所有函数**自己会拿 _db_lock**（走 set_store），
+#        所以它们**绝不能被 from 到 `with _db_lock` 里面去调** —— 普通 Lock 不可重入，
+#        在锁里再拿一次 = 全站卡死（见交接说明的坑 21 / 30）。
+#     2. 备份恢复时这两项都要"备份里有才覆盖，没有就一条都不动" ——
+#        老备份（还没有文案和条款这一版导出的）不该把主人刚改好的话冲掉。
+# ============================================================================
+
+
+def get_text_overrides():
+    """
+    读**主人自己改过的**那几句（原始覆盖值）。
+
+    返回 {key: 文案}，键一定在目录里（读出来也洗一遍 —— 手改过数据库、
+    或者跨版本升级留下了已经不存在的 key，都在这一步被清掉）。
+    """
+    raw = get_store(TEXTS_STORE_KEY)
+    try:
+        data = json.loads(raw) if raw else {}
+    except ValueError:                 # 库里存了坏 JSON：当成"一句都没改过"
+        data = {}
+    return clean_texts(data)
+
+
+def get_texts():
+    """
+    前台 / 后台要用的**完整文案表**：默认值打底，再把主人改过的覆盖上去。
+
+    所以前台永远拿得到每一句（哪怕他一句都没改过），JS 那边不用自己写兜底；
+    而"留空 = 用默认"这件事，也就在这一个地方生效。
+    """
+    texts = dict(DEFAULT_TEXTS)
+    texts.update(get_text_overrides())
+    return texts
+
+
+def save_texts(raw):
+    """
+    保存文案。返回 (覆盖值, 一共自定义了几句)。
+
+    规矩（和 clean_texts 一致）：空字符串、以及和默认一字不差的，都不存 ——
+    这样"恢复默认"只需要把某一批 key 从这份覆盖表里删掉。
+    """
+    overrides = clean_texts(raw)
+    set_store(TEXTS_STORE_KEY, json.dumps(overrides, ensure_ascii=False))
+    return overrides, len(overrides)
+
+
+def reset_texts(keys=None):
+    """
+    「恢复默认」：把指定的（或全部）文案从覆盖表里删掉，让它们回到默认那句话。
+
+    传 keys（比如后台"① 主页"那一组的全部 key）= 只恢复这一组；
+    不传 = 整页恢复默认。返回剩下的覆盖值。
+    """
+    overrides = get_text_overrides()
+    if keys:
+        for key in keys:
+            overrides.pop(str(key), None)
+    else:
+        overrides = {}
+    set_store(TEXTS_STORE_KEY, json.dumps(overrides, ensure_ascii=False))
+    return overrides
+
+
+def text_groups_for_admin():
+    """
+    给后台「文案」标签页用的目录：分组 + 每条的说明、默认值、现在生效的值。
+
+    ★ 为什么把目录发给前端而不是在 admin.html 里手写 78 个输入框：
+      一份目录三处用（后台渲染 / 前台取值 / 备份），加一句文案只要在这里加一行；
+      写在 HTML 里的话，加一句要改三个文件，迟早对不上。
+    """
+    texts = get_texts()
+    groups = []
+    for group in TEXT_GROUPS:
+        fields = []
+        for f in group["fields"]:
+            fields.append({
+                "key": f["key"],
+                "label": f["label"],
+                "default": f["default"],
+                "max": TEXT_LIMITS[f["key"]],
+                "multiline": bool(f.get("multiline")),
+                "value": texts[f["key"]],
+                "custom": texts[f["key"]] != f["default"],   # 这一句主人改过没有
+            })
+        groups.append({"id": group["id"], "name": group["name"],
+                       "hint": group.get("hint", ""), "fields": fields})
+    return groups
+
+
+def clean_terms(raw):
+    """
+    把服务条款洗干净。返回 (条款字典, 被丢掉的小节数)。
+
+    和别的清洗函数一个风格：**宁可少一节，也不能整份存不进去**。
+      · 小节标题和正文**都空**的 → 当成"这一节被你删掉了"，直接丢（不算错）；
+      · 标题为空 → 退回默认标题（后台点「保存」时另有一道 400，见 admin_terms）；
+      · 正文长度、小节数量都有上限。
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    title = str(raw.get("title") or "").strip()[:TERMS_TITLE_MAX] or DEFAULT_TERMS["title"]
+    updated = str(raw.get("updated") or "").strip()[:20]
+    sections, dropped = [], 0
+    for item in (raw.get("sections") or []):
+        if not isinstance(item, dict):
+            dropped += 1
+            continue
+        heading = str(item.get("heading") or "").strip()[:TERMS_HEADING_MAX]
+        body = str(item.get("body") or "").strip()[:TERMS_BODY_MAX]
+        if not heading and not body:
+            dropped += 1
+            continue
+        sections.append({"heading": heading, "body": body})
+        if len(sections) >= TERMS_SECTION_MAX:
+            break
+    return {"title": title, "updated": updated, "sections": sections}, dropped
+
+
+def get_terms_raw():
+    """库里存着的条款（从没保存过就返回 None —— 那是"用出厂默认"的意思）"""
+    raw = get_store(TERMS_STORE_KEY)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def terms_view():
+    """
+    页面和后台要用的条款（出厂默认也会被补齐）。
+
+    "最后更新"那行：存过就用存的那天；出厂默认（从没保存过）就用**今天** ——
+    因为那份默认条款本来就是今天生成给他的，写个空日期或者很久以前的日期都不诚实。
+    """
+    stored = get_terms_raw()
+    if stored is None:
+        terms = json.loads(json.dumps(DEFAULT_TERMS))    # 深拷贝，别让调用方改到默认值
+        terms["updated"] = today_cn()
+        return terms
+    terms, _dropped = clean_terms(stored)
+    if not terms["updated"]:
+        terms["updated"] = today_cn()
+    return terms
+
+
+def save_terms(raw):
+    """
+    保存条款。返回 (条款, 被丢掉的小节数)。
+
+    ★ 「最后更新」是**服务器自己写上的**（北京时间今天）：主人每次点保存，
+      日期就跟着变成那天 —— 不让他手填，是因为手填的日期百分之百会忘记改。
+      （恢复备份时可以带一个明确的日期进来，那种情况就照他备份里的写。）
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    terms, dropped = clean_terms(raw)
+    terms["updated"] = str(raw.get("updated") or "").strip()[:20] or today_cn()
+    set_store(TERMS_STORE_KEY, json.dumps(terms, ensure_ascii=False))
+    return terms, dropped
+
+
+def reset_terms():
+    """「恢复默认条款」：把库里的清掉，回到「一、配置」里那份出厂条款。"""
+    set_store(TERMS_STORE_KEY, "")
+    return terms_view()
+
+
+def terms_fill_vars(text, wechat):
+    """
+    条款正文里的 **{wechat}** 换成主人的微信号。
+
+    为什么要有它：默认条款的「七、怎么找我」里写着微信号。写死的话，
+    主人一换微信号就得记得回来改条款 —— 忘了就会出现"条款上写着旧号"这种最尴尬的事。
+    他要是没填微信号，就换成"页面顶部的「加微信」"，那句话永远是对的。
+    """
+    return str(text or "").replace("{wechat}", str(wechat or "").strip() or "页面顶部的「加微信」")
+
+
+def terms_sections_html(terms, wechat):
+    """
+    把条款小节拼成 HTML（给 /terms 用）。
+
+    ⚠️ 每一段都过 escape_html：**文案是纯文本，不认 HTML**。
+       这里要是图省事直接拼字符串，条款正文就成了一个能注入 <script> 的地方
+       （谁的账号登进来了谁就能改 —— 而主人是要把后台地址存进手机书签的）。
+
+    换行的处理（主人写条款一定会用到）：
+      · 空行 = 新的一段（<p>…</p>）；
+      · 单换行 = 段内换行（<br>），所以"每行一条 ·"这种列表不会挤成一坨。
+    """
+    out = []
+    for sec in terms.get("sections") or []:
+        heading = escape_html(sec.get("heading") or "")
+        body = escape_html(terms_fill_vars(sec.get("body") or "", wechat))
+        paras = [p for p in re.split(r"\n{2,}", body) if p.strip()]
+        body_html = "".join("<p>%s</p>" % p.replace("\n", "<br>") for p in paras)
+        out.append('<section class="terms-section">%s%s</section>'
+                   % (("<h2>%s</h2>" % heading) if heading else "", body_html))
+    return "\n".join(out)
+
+
+def terms_description(terms, wechat):
+    """/terms 的微信分享简介：拿第一节正文的开头几句（空格压平、截断）"""
+    for sec in terms.get("sections") or []:
+        text = " ".join(terms_fill_vars(sec.get("body") or "", wechat).split())
+        if text:
+            return text[:120]
+    return ""
+
+
+# ============================================================================
 # 四、登录会话
 #    Cookie 里放的是"过期时间 + 签名"，签名用数据库里的密码哈希当密钥。
 #    这样做的好处：网站重启/休眠/重新部署之后，你依然是登录状态（不用反复输密码）；
@@ -3704,6 +4270,71 @@ class Handler(BaseHTTPRequestHandler):
         """个人主页（品牌 + 我能做什么 + 信任信号 + 加微信）"""
         return self.render_page("index.html")
 
+    def serve_terms(self):
+        """
+        ★ 服务条款页（/terms）—— 服务端渲染，**不用一行 JavaScript**。
+
+        为什么单独一个方法、不复用 render_page：
+          · render_page 是给"由 JS 画出来"的首页/分区页用的（它塞一份 __PAGE__ JSON）；
+          · 条款页的内容（标题、小节）直接在服务器上拼好发出去，这样
+            **客户不装 JS、搜索引擎爬、微信抓分享卡片，看到的都是完整内容**；
+          · 分享卡片（og:title / og:description / og:image / og:url）也都在这拼好 ——
+            条款页是要能直接发链接给客户的，卡片不能是空的。
+
+        ⚠️ 所有从数据库里取出来的文字都过 escape_html（文案是纯文本，不认 HTML）。
+        """
+        path = os.path.join(TEMPLATE_DIR, "terms.html")
+        if not os.path.isfile(path):
+            return self.send_json({"error": "缺少模板文件。"}, 500)
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+        site = site_summary()
+        texts = site["texts"]
+        terms = terms_view()
+        wechat = str(site.get("wechat") or "")
+        name = str(site.get("name") or "个人服务")
+        title = "%s · %s" % (terms["title"], name)
+        desc = terms_description(terms, wechat) or "我的服务说明：怎么下单、怎么付钱、账号安全、责任范围。"
+        # 「最后更新：2026-10-14」——日期空着时整行不显示（不留一个光秃秃的"最后更新："）
+        updated = ("%s%s" % (texts["termsUpdatedLabel"], terms.get("updated") or "")
+                   if terms.get("updated") else "")
+        # 底部微信号那一行：没填微信号就整行不要（不能显示一个空的"微信号："）
+        wechat_line = ('<p class="done-wechat-id">%s<b>%s</b></p>'
+                       % (escape_html(texts["wechatLabel"]), escape_html(wechat))) if wechat else ""
+        payload = {
+            "{{TITLE}}": title,
+            "{{DESC}}": desc[:120],
+            "{{OG_IMAGE}}": self.share_image_url(None),
+            "{{OG_URL}}": self.site_origin() + "/terms",
+            "{{THEME_STYLE}}": self.theme_style(DEFAULT_THEME),
+            "{{BRAND}}": str(site.get("brand") or name),
+            "{{NAME}}": name,
+            "{{NAV_SERVICES}}": texts["navServices"],
+            "{{NAV_ABOUT}}": texts["navAbout"],
+            "{{NAV_TERMS}}": texts["navTerms"],
+            "{{TERMS_TITLE}}": terms["title"],
+            "{{TERMS_UPDATED}}": updated,
+            "{{TERMS_SECTIONS}}": terms_sections_html(terms, wechat),
+            "{{TERMS_BACK}}": texts["termsBackHome"],
+            "{{WECHAT_LINE}}": wechat_line,
+            "{{FOOTER_DISCLAIMER}}": texts["footerDisclaimer"],
+            "{{FOOTER_TIP}}": texts["footerTip"],
+        }
+        for key, value in payload.items():
+            # 只有这三样是我们自己拼的 HTML（里面的文字都已经 escape 过了），其余一律转义。
+            # ⚠️ WECHAT_LINE 是一整段 <p>…</p>，忘了放进这一组的话，
+            #    客户在条款页底部看到的就是一串源码（截图里真抓到过）。
+            safe = key in ("{{THEME_STYLE}}", "{{TERMS_SECTIONS}}", "{{WECHAT_LINE}}")
+            html = html.replace(key, value if safe else escape_html(value))
+        html = re.sub(r"\{\{[A-Z_]+\}\}", "", html)      # 漏掉的占位符清掉，别给客户看到
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")     # 改了条款立刻生效
+        self.end_headers()
+        self.write_body(body)
+
     def serve_zone(self, zone_id):
         """
         分区页：/z/delta、/z/overwatch……
@@ -3837,6 +4468,10 @@ class Handler(BaseHTTPRequestHandler):
         # 页面
         if path in ("/", "/index.html"):
             return self.serve_index()
+        # ★ 服务条款页（/terms）。放在这里（和首页并列）：它只是个普通页面，
+        #   不会和分区 id 抢网址（分区永远在 /z/ 下面）。
+        if path in ("/terms", "/terms/"):
+            return self.serve_terms()
         if path in (ADMIN_PATH, ADMIN_PATH + "/"):
             return self.send_file(os.path.join(TEMPLATE_DIR, "admin.html"), "text/html; charset=utf-8")
         # ⚠️ 旧地址 /admin 故意不给任何提示（不跳转、不提示"请改用新地址"）——
@@ -3956,6 +4591,12 @@ class Handler(BaseHTTPRequestHandler):
                 "payments": list_payments(limit=PAYMENT_LIST_MAX),   # ★ 收入流水（老的新在前）
                 "paymentSources": PAYMENT_SOURCE_NAMES,          # ★ 来源的中文名（前端上色用）
                 "incomeRanges": [{"id": r, "name": INCOME_RANGE_NAMES[r]} for r in INCOME_RANGES],
+                # ★ 文案表（第四刀）：完整文案 + 目录 + 主人改过的那几句 + 九宫格选项
+                "texts": get_texts(),                     # 每一句的当前值（默认值已补齐）
+                "textGroups": text_groups_for_admin(),    # 后台「文案」页照它生成输入框
+                "textOverrides": get_text_overrides(),    # 只存了这几句（"恢复默认"用得上）
+                "terms": terms_view(),                    # 服务条款（标题 + 小节）
+                "positionChoices": [{"value": v, "name": n} for v, n in POSITION_CHOICES],
                 "serverTime": int(time.time() * 1000),   # 前端算"已经等了 N 小时"要用它
             })
 
@@ -4045,6 +4686,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.admin_payments(body)
         if path == "/api/admin/gallery-categories":      # ★ 展示墙分类（增删改排序）
             return self.admin_gallery_categories(body)
+        if path == "/api/admin/texts":                   # ★ 文案表（保存 / 恢复默认）
+            return self.admin_texts(body)
+        if path == "/api/admin/terms":                   # ★ 服务条款（保存 / 恢复默认）
+            return self.admin_terms(body)
 
         return self.send_json({"error": "接口不存在。"}, 404)
 
@@ -4061,6 +4706,11 @@ class Handler(BaseHTTPRequestHandler):
             revision = body.get("revision") or 0
             if not isinstance(profile, dict):
                 return self.send_json({"error": "资料格式不正确。"}, 400)
+            # ★ 三个「图片显示位置」入库前再洗一遍（前台那道校验只是省事，后端这道才是防线）：
+            #   不是九宫格里的值就退回 center，绝不把奇怪的东西写进库里。
+            for key in PROFILE_POSITION_KEYS:
+                if key in profile:
+                    profile[key] = clean_image_position(profile.get(key))
             ok, rev = save_profile(profile, revision)
             if not ok:
                 return self.send_json({"error": "资料已在别处更新，请刷新后重试。"}, 409)
@@ -4538,6 +5188,68 @@ class Handler(BaseHTTPRequestHandler):
 
         return self.send_json({"error": "不支持的操作。"}, 400)
 
+    def admin_texts(self, body):
+        """
+        POST /api/admin/texts —— ★ 文案表（后台「文案」标签页）。
+
+          save   保存   {action:"save", texts:{key: 文案, …}}
+                        （只发改动过的也行：没出现在 texts 里的 key 保持原样 ——
+                          但后台的「保存文案」是整页一起发，这样"清空某一格 = 回默认"最直观）
+          reset  恢复默认 {action:"reset", keys:["heroIntro", …]}  ← 不传 keys = 整页恢复
+
+        返回：{"ok":true, "texts":完整文案表, "textOverrides":改过的那几句, "saved"/"reset":几条}
+        前端拿到直接重画那一页，不用自己猜状态（和 /api/admin/zones 一个套路）。
+        """
+        action = str(body.get("action") or "save")
+
+        if action == "reset":
+            keys = body.get("keys")
+            keys = [str(k) for k in keys] if isinstance(keys, list) else None
+            overrides = reset_texts(keys)
+            return self.send_json({"ok": True, "texts": get_texts(),
+                                   "textOverrides": overrides,
+                                   "reset": len(keys) if keys else len(DEFAULT_TEXTS)})
+
+        if action == "save":
+            raw = body.get("texts")
+            if not isinstance(raw, dict):
+                return self.send_json({"error": "文案格式不正确（要一个 JSON 对象）。"}, 400)
+            # ⚠️ save_texts 里面会走 set_store（它自己拿 _db_lock），所以这里不能待在任何 with 里
+            overrides, saved = save_texts(raw)
+            return self.send_json({"ok": True, "texts": get_texts(),
+                                   "textOverrides": overrides, "saved": saved})
+
+        return self.send_json({"error": "不支持的操作。"}, 400)
+
+    def admin_terms(self, body):
+        """
+        POST /api/admin/terms —— ★ 服务条款（后台「文案」标签页里那一块）。
+
+          save  保存 {action:"save", title, sections:[{heading, body}, …]}
+                    节序就是数组顺序 —— 后台的 ↑↓ 就是在调这个数组。
+                    「最后更新」由服务器写成今天（北京时间），不用前端传。
+          reset 恢复默认 {action:"reset"}  ← 回到 app.py 里那份出厂条款
+
+        校验：
+          · 标题空 → 400（标题是页面的门面，不能空着）；
+          · 标题+正文都空的小节 → 丢掉（= 你把这一节删了），不算错，
+            但返回里带一个 dropped，前端可以提一句"空小节已忽略"。
+        """
+        action = str(body.get("action") or "save")
+
+        if action == "reset":
+            return self.send_json({"ok": True, "terms": reset_terms(), "reset": True})
+
+        if action == "save":
+            if not isinstance(body.get("sections"), list):
+                return self.send_json({"error": "条款小节格式不正确（要一个数组）。"}, 400)
+            if not str(body.get("title") or "").strip():
+                return self.send_json({"error": "条款标题不能是空的。"}, 400)
+            terms, dropped = save_terms(body)
+            return self.send_json({"ok": True, "terms": terms, "dropped": dropped})
+
+        return self.send_json({"error": "不支持的操作。"}, 400)
+
     def admin_import(self, body):
         """从备份 JSON 恢复：整体覆盖预约时段、休息规则、资料、展示墙、分区和收入流水。"""
         data = body.get("backup") if isinstance(body, dict) and isinstance(body.get("backup"), dict) else body
@@ -4568,6 +5280,11 @@ class Handler(BaseHTTPRequestHandler):
             "payments": list_payments(limit=PAYMENT_LIST_MAX),
             "paymentSources": PAYMENT_SOURCE_NAMES,
             "incomeRanges": [{"id": r, "name": INCOME_RANGE_NAMES[r]} for r in INCOME_RANGES],
+            # ★ 文案和条款：老备份没带这两项 → 这里的还是他现在的那份（绝不清空）
+            "texts": get_texts(),
+            "textGroups": text_groups_for_admin(),
+            "textOverrides": get_text_overrides(),
+            "terms": terms_view(),
         })
 
     def admin_password(self, body):

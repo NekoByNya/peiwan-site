@@ -78,6 +78,12 @@ const state = {
   incomeRanges: [],       // 范围按钮：[{id:'month', name:'本月'}, …]
   payRange: 'month',      // 现在看的是哪个范围（和后端 INCOME_RANGES 的 id 对上）
   editingPaymentId: null, // 弹窗里正在改哪一条（null = 记一笔新的）
+  // ---- ★ 第四刀：文案 + 服务条款 + 图片显示位置 ----
+  texts: {},              // 完整文案表（后端把默认值补齐了）
+  textGroups: [],         // 目录：分组 + 每条的说明 / 默认值 / 现在的值
+  textOverrides: {},      // 只存了这几句（"恢复默认"和"改过几句"都看它）
+  terms: { title: '', updated: '', sections: [] },   // 服务条款
+  positionChoices: [],    // 九宫格的 9 个选项 [{value:'left top', name:'左上'}, …]
 };
 
 /* ---------- 时间工具（一律按北京时间算） ---------- */
@@ -223,6 +229,11 @@ async function loadAll() {
   state.payments = admin.payments || [];                    // ★ 收入流水（第三刀）
   state.income = admin.income || {};
   state.incomeRanges = admin.incomeRanges || [];
+  state.texts = admin.texts || {};                          // ★ 文案（第四刀）
+  state.textGroups = admin.textGroups || [];
+  state.textOverrides = admin.textOverrides || {};
+  state.terms = admin.terms || { title: '', updated: '', sections: [] };
+  state.positionChoices = admin.positionChoices || [];      // ★ 九宫格的 9 个选项
   state.publicSlots = pub.slots;
   if (!state.date) state.date = midnightOf(pub.serverTime);
   // 正在编辑的分区：保持原来的选择；没有就选第一个；一个分区都没有就留空
@@ -264,6 +275,9 @@ function renderAll() {
   renderBackupState();
   renderNotify();
   renderDataHint();
+  renderTexts();              // ★ 文案标签页（照着目录生成输入框）
+  renderTerms();              // ★ 服务条款（标题 + 小节编辑器）
+  renderPosPickers();         // ★ 图片显示位置的九宫格
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
 }
@@ -1719,6 +1733,7 @@ function fillZoneForm() {
   setImagePreview('zPriceSheetImage', p.priceSheetImage);
   renderPriceEditor();
   renderGroupEditor();
+  renderPosPickers();   // ★ 分区这两张图的显示位置（九宫格）
   applyEditMode();      // 最后按"编辑主页 / 编辑分区"切换显示哪一块
 }
 
@@ -2018,6 +2033,8 @@ function fillSiteForm() {
   setImagePreview('avatar', p.avatar);
   setImagePreview('wechatQr', p.wechatQr);
   setImagePreview('siteBackground', p.background);
+  setImagePreview('homeHero', p.heroImage);   // ★ 顺手补上：以前漏了这一行，刷新后首屏图预览是空的
+  renderPosPickers();                          // ★ 首页那三张图的显示位置（九宫格）
 }
 
 function collectSiteForm() {
@@ -2547,6 +2564,346 @@ $('#zoneAdminList').addEventListener('click', async (e) => {
     }
     if (neu) return createZoneFlow(neu.dataset.zoneNew);
   } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+/* ==========================================================================
+   ★ 文案 + 服务条款（第四刀：客户看到的每一句话都能在后台改）
+   --------------------------------------------------------------------------
+   两条设计：
+     1. **目录在 app.py 的 TEXT_GROUPS 里**，这里只负责"照着目录画出来"。
+        八十多句文案，如果一句写一个 <input>，以后加一句要改 HTML + JS 两处，
+        迟早对不上（这个项目已经因为"两处要同步"踩过好几次坑了）。
+     2. **只存改过的那几句**：输入框里预填的是"现在生效的那句"，
+        保存时后端会把"和默认一字不差"的丢掉 —— 所以主人只是点开看一眼再保存，
+        不会把所有默认值都钉死（以后默认值改好了他还能收到）。
+
+   ⚠️ 这一页的行是 JS 生成的，所以用 class + data-* 而不是 id（几十行重复的 id 不合法）。
+      真要找某一格，用 [data-text-key="heroIntro"] 这种选择器。
+   ========================================================================== */
+
+/** 九宫格要控制哪张图：容器 id / 存到哪个字段 / 顺手更新哪个预览图 / 是不是分区自己的 */
+const POSITION_PICKERS = [
+  { box: 'posAvatar', key: 'avatarPosition', preview: 'avatarPreview' },
+  { box: 'posHomeBackground', key: 'backgroundPosition', preview: 'siteBackgroundPreview' },
+  { box: 'posHomeHero', key: 'heroImagePosition', preview: 'homeHeroPreview' },
+  { box: 'posZoneBackground', key: 'backgroundPosition', preview: 'zBackgroundPreview', zone: true },
+  { box: 'posZoneHero', key: 'heroImagePosition', preview: 'zHeroImagePreview', zone: true },
+];
+
+/** 这个九宫格该读哪个对象：首页那几张存全局资料，分区那两张存分区资料 */
+function positionTarget(cfg) {
+  if (cfg.zone) {
+    const z = currentZone();
+    return z ? (z.profile = z.profile || {}) : null;
+  }
+  return state.profile || null;
+}
+
+/** 画九宫格（当前选中的那个高亮）。顺手把预览图也按这个位置显示，点一下就看得到效果 */
+function renderPosPickers() {
+  POSITION_PICKERS.forEach((cfg) => {
+    const box = $('#' + cfg.box);
+    if (!box) return;
+    const target = positionTarget(cfg);
+    const value = (target && target[cfg.key]) || 'center';
+    box.innerHTML = (state.positionChoices || []).map((c) =>
+      `<button type="button" class="pos-btn${c.value === value ? ' active' : ''}"
+         data-pos-value="${escapeHtml(c.value)}"
+         title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join('');
+    const preview = $('#' + cfg.preview);
+    if (preview) {
+      preview.style.objectPosition = value;
+      preview.title = `显示位置：${value}`;
+    }
+  });
+}
+
+// 点九宫格：只改内存（和图片一样，等「保存这个分区」/「保存主页设置」一起提交）
+POSITION_PICKERS.forEach((cfg) => {
+  const box = $('#' + cfg.box);
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pos-btn');
+    if (!btn) return;
+    const target = positionTarget(cfg);
+    if (!target) return toast('还没有分区，先去「分区管理」新建一个', true);
+    target[cfg.key] = btn.dataset.posValue;
+    renderPosPickers();
+    // 说清楚"还没生效"：和图片一个规矩，得点保存
+    const stateEl = cfg.zone ? $('#zoneState') : $('#uploadState');
+    if (stateEl) {
+      stateEl.className = 'hint';
+      stateEl.textContent = cfg.zone ? '显示位置已改，记得点「保存这个分区」' : '显示位置已改，记得点「保存主页设置」';
+    }
+  });
+});
+
+/** 把"目录"和"现在的值"重新拼一遍（保存 / 恢复默认之后要用它重画） */
+function syncTextGroups() {
+  const texts = state.texts || {};
+  state.textGroups = (state.textGroups || []).map((g) => ({
+    ...g,
+    fields: g.fields.map((f) => {
+      const value = (texts[f.key] === undefined || texts[f.key] === '') ? f.default : texts[f.key];
+      return { ...f, value, custom: value !== f.default };
+    }),
+  }));
+}
+
+/** 现在一共有几句是主人自己改的 */
+const customizedCount = () => Object.keys(state.textOverrides || {}).length;
+
+/** 画「文案」页：按目录分组，一组一块，一行一个输入框 */
+function renderTexts() {
+  const box = $('#textGroupList');
+  if (!box) return;
+  const groups = state.textGroups || [];
+  if (!groups.length) {
+    box.innerHTML = '<div class="empty-state">没拿到文案目录，点右上角「刷新数据」试试。</div>';
+    return;
+  }
+  box.innerHTML = groups.map((g) => {
+    const changed = g.fields.filter((f) => f.custom).length;
+    return `
+    <div class="text-group" data-group="${escapeHtml(g.id)}">
+      <div class="text-group-head">
+        <h3>${escapeHtml(g.name)}</h3>
+        <span class="hint grow">${escapeHtml(g.hint || '')}</span>
+        <button class="button small ghost" data-reset-group="${escapeHtml(g.id)}">这一组恢复默认</button>
+      </div>
+      <p class="sub">${changed ? `这一组里有 ${changed} 句是你改过的（下面标着「已改」）`
+        : '这一组现在全是默认文案，一个字都没改'}</p>
+      ${g.fields.map((f) => `
+        <div class="text-row">
+          <label class="text-label" for="tf-${escapeHtml(f.key)}">${escapeHtml(f.label)}
+            ${f.custom ? '<span class="badge mini">已改</span>' : ''}</label>
+          ${f.multiline
+            ? `<textarea id="tf-${escapeHtml(f.key)}" data-text-key="${escapeHtml(f.key)}"
+                 maxlength="${f.max}">${escapeHtml(f.value)}</textarea>`
+            : `<input id="tf-${escapeHtml(f.key)}" data-text-key="${escapeHtml(f.key)}"
+                 maxlength="${f.max}" value="${escapeHtml(f.value)}">`}
+          ${f.custom ? `<p class="text-default">默认那句话：<b>${escapeHtml(f.default)}</b></p>` : ''}
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+  const stateEl = $('#textsState');
+  if (stateEl) {
+    stateEl.className = 'hint';
+    stateEl.textContent = customizedCount()
+      ? `现在有 ${customizedCount()} 句是你自己改的，其余都是默认`
+      : '现在全部是默认文案（你一句都没改过）';
+  }
+}
+
+/** 收集「文案」页上所有输入框的值（整页一起发：清空某一格 = 那一句回默认） */
+function collectTexts() {
+  const out = {};
+  $$('[data-text-key]').forEach((el) => { out[el.dataset.textKey] = el.value; });
+  return out;
+}
+
+/** 保存 / 恢复默认之后：把后端返回的最新状态写回本地并重画 */
+function applyTextsResult(data) {
+  if (data.texts) state.texts = data.texts;
+  if (data.textOverrides) state.textOverrides = data.textOverrides;
+  syncTextGroups();
+  renderTexts();
+}
+
+async function saveTextsForm() {
+  const btn = $('#saveTexts');
+  const el = $('#textsState');
+  btn.disabled = true;
+  el.className = 'hint';
+  el.textContent = '正在保存…';
+  try {
+    const data = await api('/api/admin/texts', {
+      method: 'POST', body: JSON.stringify({ action: 'save', texts: collectTexts() }),
+    });
+    applyTextsResult(data);
+    $('#textsState').className = 'hint ok';
+    $('#textsState').textContent = data.saved
+      ? `已保存：你改过 ${data.saved} 句，其余用默认（让客户刷新一下页面就看到了）`
+      : '已保存：现在全部是默认文案';
+    toast('文案已保存');
+  } catch (err) {
+    $('#textsState').className = 'hint error';
+    $('#textsState').textContent = err.message;
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** 恢复默认：传 keys = 只恢复这一组；不传 = 整页恢复 */
+async function resetTextsFlow(keys, label) {
+  const what = keys ? `「${label}」这一组的文案` : '整页所有的文案';
+  if (!confirm(`把${what}恢复成默认？\n（你自己改过的那几句会被删掉，恢复成出厂那句话）`)) return;
+  const el = $('#textsState');
+  el.className = 'hint';
+  el.textContent = '正在恢复…';
+  try {
+    const body = { action: 'reset' };
+    if (keys) body.keys = keys;
+    const data = await api('/api/admin/texts', { method: 'POST', body: JSON.stringify(body) });
+    applyTextsResult(data);
+    $('#textsState').className = 'hint ok';
+    $('#textsState').textContent = '已恢复默认';
+    toast('已恢复默认文案');
+  } catch (err) {
+    el.className = 'hint error';
+    el.textContent = err.message;
+    toast(err.message, true);
+  }
+}
+
+/* ---------- 服务条款（/terms 那一页） ---------- */
+
+function renderTerms() {
+  const t = state.terms || {};
+  const titleEl = $('#termsTitleInput');
+  if (!titleEl) return;
+  titleEl.value = t.title || '服务条款';
+  const meta = $('#termsMeta');
+  if (meta) {
+    meta.textContent = t.updated
+      ? `最后更新：${t.updated}（这是你上次点「保存条款」那天，自动写的）`
+      : '还没有保存过，现在给客户看的是默认条款。';
+  }
+  const secs = t.sections || [];
+  const box = $('#termsSections');
+  box.innerHTML = secs.map((s, i) => `
+    <div class="terms-row" data-index="${i}">
+      <div class="field">
+        <label for="tsh-${i}">第 ${i + 1} 节 · 小标题</label>
+        <input id="tsh-${i}" data-term-heading="${i}" maxlength="40"
+               value="${escapeHtml(s.heading || '')}">
+      </div>
+      <div class="field">
+        <label for="tsb-${i}">正文（空一行 = 另起一段；单独换行就是换行）</label>
+        <textarea id="tsb-${i}" data-term-body="${i}"
+                  maxlength="3000">${escapeHtml(s.body || '')}</textarea>
+      </div>
+      <div class="row-actions">
+        <button class="button small ghost" data-term-up="${i}" ${i === 0 ? 'disabled' : ''}>↑ 上移</button>
+        <button class="button small ghost" data-term-down="${i}"
+                ${i === secs.length - 1 ? 'disabled' : ''}>↓ 下移</button>
+        <button class="button small danger" data-term-del="${i}">🗑 删除这一节</button>
+      </div>
+    </div>`).join('')
+    || '<div class="empty-state">现在一节都没有。点下面「+ 新增一节」加一个（客户只会看到标题）。</div>';
+}
+
+/** 把编辑框里现在的内容收回内存 —— ↑↓ / 删除 / 新增之前必须先收，否则刚打的字会丢 */
+function collectTermsFromForm() {
+  const t = { ...(state.terms || {}) };
+  const titleEl = $('#termsTitleInput');
+  t.title = titleEl ? titleEl.value.trim() : (t.title || '');
+  t.sections = $$('[data-term-heading]').map((el) => {
+    const i = el.dataset.termHeading;
+    const bodyEl = $(`[data-term-body="${i}"]`);
+    return { heading: el.value, body: bodyEl ? bodyEl.value : '' };
+  });
+  return t;
+}
+
+function applyTermsResult(data) {
+  if (data.terms) state.terms = data.terms;
+  renderTerms();
+}
+
+async function saveTermsForm() {
+  const form = collectTermsFromForm();
+  const el = $('#termsState');
+  if (!form.title) {
+    el.className = 'hint error';
+    el.textContent = '条款标题不能是空的。';
+    return toast('条款标题不能是空的', true);
+  }
+  const btn = $('#saveTerms');
+  btn.disabled = true;
+  el.className = 'hint';
+  el.textContent = '正在保存…';
+  try {
+    const data = await api('/api/admin/terms', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'save', title: form.title, sections: form.sections }),
+    });
+    applyTermsResult(data);
+    $('#termsState').className = 'hint ok';
+    $('#termsState').textContent = data.dropped
+      ? `已保存（有 ${data.dropped} 节是空的，已经忽略）—— 客户刷新 /terms 就看到了`
+      : '已保存 —— 客户刷新 /terms 就看到了';
+    toast('条款已保存');
+  } catch (err) {
+    $('#termsState').className = 'hint error';
+    $('#termsState').textContent = err.message;
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('#saveTexts').addEventListener('click', saveTextsForm);
+$('#resetAllTexts').addEventListener('click', () => resetTextsFlow(null, ''));
+$('#textGroupList').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-reset-group]');
+  if (!btn) return;
+  const group = (state.textGroups || []).find((g) => g.id === btn.dataset.resetGroup);
+  if (!group) return;
+  resetTextsFlow(group.fields.map((f) => f.key), group.name);
+});
+
+$('#termsSections').addEventListener('click', (e) => {
+  const up = e.target.closest('[data-term-up]');
+  const down = e.target.closest('[data-term-down]');
+  const del = e.target.closest('[data-term-del]');
+  if (!up && !down && !del) return;
+  const form = collectTermsFromForm();
+  const secs = form.sections || [];
+  if (up || down) {
+    const i = Number((up || down).dataset[up ? 'termUp' : 'termDown']);
+    const j = up ? i - 1 : i + 1;
+    if (j < 0 || j >= secs.length) return;
+    const tmp = secs[i];
+    secs[i] = secs[j];
+    secs[j] = tmp;
+  } else {
+    const i = Number(del.dataset.termDel);
+    if (!confirm(`删除第 ${i + 1} 节？\n（点「保存条款」之后客户那边才会变）`)) return;
+    secs.splice(i, 1);
+  }
+  state.terms = { ...form, sections: secs };
+  renderTerms();
+});
+
+$('#addTermSection').addEventListener('click', () => {
+  const form = collectTermsFromForm();
+  form.sections = (form.sections || []).concat([{ heading: '', body: '' }]);
+  state.terms = form;
+  renderTerms();
+  toast('新增了一节，填好小标题和正文再点保存');
+});
+
+$('#saveTerms').addEventListener('click', saveTermsForm);
+$('#resetTerms').addEventListener('click', async () => {
+  if (!confirm('恢复默认条款？\n（你改过的标题和小节都会回到出厂那份）')) return;
+  const el = $('#termsState');
+  el.className = 'hint';
+  el.textContent = '正在恢复…';
+  try {
+    const data = await api('/api/admin/terms', {
+      method: 'POST', body: JSON.stringify({ action: 'reset' }),
+    });
+    applyTermsResult(data);
+    $('#termsState').className = 'hint ok';
+    $('#termsState').textContent = '已恢复默认条款';
+    toast('已恢复默认条款');
+  } catch (err) {
+    el.className = 'hint error';
+    el.textContent = err.message;
     toast(err.message, true);
   }
 });
@@ -3118,10 +3475,14 @@ $('#importBtn').addEventListener('click', async () => {
     const zones = (backup.zones || []).length;
     const customers = (backup.customers || []).length;
     const payments = (backup.payments || []).length;
+    const texts = Object.keys(backup.texts || {}).length;
+    const terms = ((backup.terms || {}).sections || []).length;
     if (!confirm(`将要恢复：\n· 预约/休息时段 ${locks} 条\n· 固定休息规则 ${rules} 条\n`
       + `· 分区 ${zones} 个（含价格与图片）\n· 展示墙 ${gallery} 条\n`
       + `· 客户档案 ${customers} 位${backup.customers ? '' : '（这份老备份里没有客户，你现在的客户档案会原样保留）'}\n`
-      + `· 收入流水 ${payments} 笔${backup.payments ? '' : '（这份老备份里没有收入流水，你现在记的账会原样保留）'}\n\n`
+      + `· 收入流水 ${payments} 笔${backup.payments ? '' : '（这份老备份里没有收入流水，你现在记的账会原样保留）'}\n`
+      + `· 文案 ${texts} 句${backup.texts ? '' : '（这份老备份里没有文案，你现在改过的话会原样保留）'}\n`
+      + `· 服务条款 ${terms} 节${backup.terms ? '' : '（这份老备份里没有条款，你现在那份会原样保留）'}\n\n`
       + `会覆盖现在的全部数据，确定吗？`)) return;
 
     const data = await api('/api/admin/import', { method: 'POST', body: JSON.stringify({ backup }) });
@@ -3136,6 +3497,11 @@ $('#importBtn').addEventListener('click', async () => {
     state.customerStats = data.customerStats || state.customerStats;
     if (data.today) state.customerToday = data.today;
     if (data.income) applyIncomeResult(data);      // ★ 收入流水也跟着恢复（老备份没带就不动）
+    // ★ 文案和条款也跟着恢复（老备份没带的话，后端一条都不动，这里拿到的是他现在那份）
+    if (data.textGroups) state.textGroups = data.textGroups;
+    if (data.texts) state.texts = data.texts;
+    if (data.textOverrides) state.textOverrides = data.textOverrides;
+    if (data.terms) state.terms = data.terms;
     if (!zoneById(state.currentZoneId)) state.currentZoneId = state.zones.length ? state.zones[0].id : '';
     if (!zoneById(state.galleryZoneId)) state.galleryZoneId = state.currentZoneId;
     state.batch.clear();
@@ -3144,7 +3510,8 @@ $('#importBtn').addEventListener('click', async () => {
     $('#importState').textContent =
       `已恢复：时段 ${data.summary.locks} 条、规则 ${data.summary.rules} 条、`
       + `分区 ${data.summary.zones || 0} 个、展示 ${data.summary.gallery} 条、`
-      + `客户 ${data.summary.customers || 0} 位、收入 ${data.summary.payments || 0} 笔`
+      + `客户 ${data.summary.customers || 0} 位、收入 ${data.summary.payments || 0} 笔、`
+      + `文案 ${data.summary.texts || 0} 句、条款 ${data.summary.terms || 0} 节`
       + `（含图片 ${data.summary.images} 张）`;
     $('#importState').className = 'hint ok';
     toast('备份已恢复');

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 打包上传包：把"要传上 GitHub 的文件"打成 zip，方便你备份或在另一台电脑上打开。
 
@@ -27,7 +27,9 @@ OUT = os.path.join(os.path.dirname(ROOT), "peiwan-site-上传用.zip")
 FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat", "start-lan.bat",
          "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
 DIRS = ["static", "templates", "tests", "docs", "tools", ".github"]
-SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", ".git"}
+# 这些目录永远不进包：数据、临时测试库、缓存的字节码、以及**给主人看的截图目录**
+# （_shots2 里是几 MB 的 PNG，打进去只会让上传包变肥；它同时在 .gitignore 里）
+SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", "_shots2", ".git"}
 
 
 def collect():

@@ -23,13 +23,16 @@
 <body data-mode="home">
 
 <!-- ============ 顶部导航 ============ -->
+<!-- 导航上的字（我能做什么 / 为什么找我 / 关于我 / 服务条款）全部来自后台「文案」标签页。
+     ⚠️ 这里写的中文是**默认值**：JS 会拿服务端给的文案覆盖它，所以没改过的人看到的一模一样。 -->
 <header class="nav">
   <div class="container nav-inner">
     <a class="brand" href="/"><span id="brandMark">Nya</span> <span id="brandName">·</span></a>
     <nav class="nav-links" id="navLinks">
-      <a href="#services">我能做什么</a>
-      <a href="#trust">为什么找我</a>
-      <a href="#about">关于我</a>
+      <a href="#services" id="navServices" class="active">我能做什么</a>
+      <a href="#trust" id="navWhy">为什么找我</a>
+      <a href="#about" id="navAbout">关于我</a>
+      <a href="/terms" id="navTerms">服务条款</a>
     </nav>
   </div>
 </header>
@@ -42,7 +45,7 @@
       <h1 id="heroHeadline">—</h1>
       <p class="tagline" id="heroSub"></p>
       <div class="hero-actions">
-        <a class="button primary" href="#services">看看我能做什么</a>
+        <a class="button primary" href="#services" id="heroCta">看看我能做什么</a>
         <button class="button" id="copyWechat">加微信</button>
         <span class="status-dot" id="acceptingDot"><i></i><span id="acceptingText">—</span></span>
       </div>
@@ -74,9 +77,9 @@
     <div class="section-head">
       <div>
         <div class="section-no">02 / WHY ME</div>
-        <h2>为什么找我。</h2>
+        <h2 id="whyTitle">为什么找我。</h2>
       </div>
-      <p>个人接单 · 无中间商</p>
+      <p id="whyHint">个人接单 · 无中间商</p>
     </div>
     <div class="trust-grid" id="trustList"></div>
   </div>
@@ -88,7 +91,8 @@
     <div class="section-head">
       <div>
         <div class="section-no">03 / ABOUT</div>
-        <h2>你好，我是 <span id="aboutName">—</span>。</h2>
+        <!-- 整句都由文案决定（{name} 会换成昵称），默认那句和以前一样 -->
+        <h2 id="aboutTitle">你好，我是 <span id="aboutName">—</span>。</h2>
       </div>
       <p id="aboutHint"></p>
     </div>
@@ -99,7 +103,7 @@
         <div class="wechat-card" id="wechatCard" hidden>
           <img id="wechatQrImg" alt="微信二维码" hidden>
           <div>
-            <p class="hint" style="margin:0">加我微信，直接聊需求</p>
+            <p class="hint" style="margin:0" id="wechatCardHint">加我微信，直接聊需求</p>
             <p class="wechat-big" id="wechatBig"></p>
           </div>
         </div>
@@ -128,7 +132,13 @@
   </div>
   <div class="container">
     <p id="footerZone"></p>
-    <p>本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。</p>
+    <!-- 页脚小链接：条款页从这里进（「服务条款」这几个字在后台「文案」里能改） -->
+    <p class="footer-links">
+      <a href="#about" id="footerAboutLink">关于我</a>
+      <span class="sep">·</span>
+      <a href="/terms" id="footerTermsLink">服务条款</a>
+    </p>
+    <p id="footerDisclaimer">本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。</p>
   </div>
 </footer>
 

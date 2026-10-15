@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ★ 服务条款页（/terms）：标题、小节、最后更新日期全部由 app.py 在服务端拼好。
+     ⚠️ 这一页**故意不用 JavaScript** ——
+        客户不装 JS 也能看全，微信抓分享卡片、搜索引擎爬到的也是完整内容。
+     正文和标题都来自后台「文案 → 服务条款」（store key='terms'），改完刷新就生效。 -->
+<title>{{TITLE}}</title>
+<meta name="description" content="{{DESC}}">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="{{NAME}}">
+<meta property="og:title" content="{{TITLE}}">
+<meta property="og:description" content="{{DESC}}">
+<meta property="og:url" content="{{OG_URL}}">
+<meta property="og:image" content="{{OG_IMAGE}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0a0d0b">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+{{THEME_STYLE}}
+</head>
+<body data-mode="terms">
+
+<!-- ============ 顶部导航：和主页同一套，只是当前页高亮 ============ -->
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="/"><span>{{BRAND}}</span> <span>·{{NAME}}</span></a>
+    <nav class="nav-links">
+      <a href="/#services">{{NAV_SERVICES}}</a>
+      <a href="/#about">{{NAV_ABOUT}}</a>
+      <!-- 当前页：加 active（颜色和 hover 一样亮，客户一眼知道自己站在哪一页） -->
+      <a class="active" href="/terms">{{NAV_TERMS}}</a>
+    </nav>
+  </div>
+</header>
+
+<main class="section">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-no">04 / TERMS</div>
+        <h1 class="terms-title">{{TERMS_TITLE}}</h1>
+      </div>
+      <!-- 「最后更新：2026-10-14」——你在后台每保存一次条款，这个日期就是那天（北京时间） -->
+      <p class="hint">{{TERMS_UPDATED}}</p>
+    </div>
+
+    <!-- 条款正文：小节由 app.py 的 terms_sections_html() 拼好，每一节长这样
+         （把结构写在这里，是为了让 tests/check_frontend.js 能对上 style.css 里的 .terms-section）：
+           <section class="terms-section"><h2>小标题</h2><p>正文一段</p></section>
+         每个空行 = 一个 <p>；段里单独换行 = <br>。 -->
+    <div class="panel terms-body">
+{{TERMS_SECTIONS}}
+    </div>
+
+    <div class="terms-foot">
+      {{WECHAT_LINE}}
+      <a class="button primary" href="/">{{TERMS_BACK}}</a>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>{{FOOTER_TIP}}</p>
+    <p>{{FOOTER_DISCLAIMER}}</p>
+  </div>
+</footer>
+
+</body>
+</html>

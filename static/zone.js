@@ -14,10 +14,11 @@ const HOUR = 3600 * 1000;
 const MAX_HOURS = 6;                 // 一次最多能选几小时（和后端 MAX_BOOK_HOURS 保持一致）
 
 const CONTACT_TEXT = { wechat: '微信', xianyu: '闲鱼', qq: 'QQ' };
-const CONTACT_PLACEHOLDER = {
-  wechat: '你的微信号',
-  xianyu: '你的闲鱼用户名',
-  qq: '你的 QQ 号',
+// 输入框里的灰字：每一种联系方式一句（都在后台「文案」里能改）
+const CONTACT_PLACEHOLDER_KEYS = {
+  wechat: ['contactPhWechat', '你的微信号'],
+  xianyu: ['contactPhXianyu', '你的闲鱼用户名'],
+  qq: ['contactPhQq', '你的 QQ 号'],
 };
 
 const INITIAL = window.__PAGE__ || {};
@@ -35,7 +36,26 @@ const state = {
   syncedAt: 0,
 };
 
-const SELECTION_HINT = () => `先点选想玩的时间，连续或分开都可以（一次最多 ${MAX_HOURS} 小时）。`;
+/* ---------- ★ 文案表：客户看到的每一句中文，都由后台「文案」决定 ----------
+   服务端（app.py 的 site_summary）已经把默认值补齐了；tx() 的第二个参数是最后一道保险。
+   花括号是"变量"：{name} 昵称 / {zone} 分区名 / {max} 一次最多几小时。 */
+function TEXTS() { return (state.site && state.site.texts) || {}; }
+
+function tx(key, fallback, vars) {
+  const value = TEXTS()[key];
+  const text = (value === undefined || value === null || value === '') ? (fallback || '') : value;
+  const map = vars || {};
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (map[k] !== undefined ? map[k] : m));
+}
+
+/** 分区资料的取值小工具（每一处都写 state.zone.profile 太啰嗦） */
+function profile() { return state.zone.profile || {}; }
+
+/** 图片的显示位置（后台九宫格选的）。没设置过就是 center —— 和以前一模一样 */
+function pos(key) { return profile()[key + 'Position'] || 'center'; }
+
+const SELECTION_HINT = () => tx('selectionHint',
+  `先点选想玩的时间，连续或分开都可以（一次最多 ${MAX_HOURS} 小时）。`, { max: MAX_HOURS });
 
 /* ---------- 客户在什么环境里打开的？----------
    这件事很关键：微信个人二维码是**微信私有格式**，只有微信自己能解析成"加好友"。
@@ -164,23 +184,59 @@ function renderTabs() {
     </span>`).join('');
   $('#brandMark').textContent = state.site.brand || state.site.name || 'Nya';
   $('#brandName').textContent = state.site.name || '';
+  $('#navTerms').textContent = tx('navTerms', '服务条款');
 }
 
 /* ---------- 分区首屏 ---------- */
 function applyBackground() {
-  const p = state.zone.profile || {};
+  const p = profile();
   const bg = $('#zoneHeroBg');
   if (!p.background) { bg.style.display = 'none'; return; }
   bg.style.display = '';
   bg.style.backgroundImage = `url("${p.background}")`;
+  // ★ 显示位置：分区背景图是 background-size: cover（铺满就会被裁），
+  //   这一行决定保留哪一块（后台「分区图片」里的九宫格选的）
+  bg.style.backgroundPosition = pos('background');
   let dim = Number(p.backgroundDim);
   if (!Number.isFinite(dim)) dim = 72;
   bg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
 }
 
+/** 页脚那一套（分区页和首页共用同一批文案，这里单独一个函数免得散在各处） */
+function renderFooterTexts() {
+  const site = state.site;
+  const z = state.zone;
+  const booking = (z.kind || 'booking') === 'booking';
+  $('#footerZone').textContent = `${tx('footerZoneLabel', '当前页面：')}${z.name}（/z/${z.id}）`;
+  // 这两句是分区页页脚收尾的话（陪玩一句、代肝/剪辑一句）
+  $('#footerHint').textContent = booking
+    ? tx('footerHintBooking', '选好时间点一下就锁上了，我这边立刻收到消息。')
+    : tx('footerHintService', '还没想好要哪一档？加我问一句，说清需求和工期就行。');
+  $('#footerTip').textContent = tx('footerTip', '加我之后直接说：哪个游戏 / 哪一档，我来安排。');
+  $('#footerDisclaimer').textContent = tx('footerDisclaimer',
+    '本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。');
+  $('#footerAboutLink').textContent = tx('navAbout', '关于我');
+  $('#footerTermsLink').textContent = tx('navTerms', '服务条款');
+
+  // 页脚收尾区：二维码 + 微信号（读完这页的人，这里是他最后的出口）
+  const fq = $('#footerQr');
+  if (fq) {
+    fq.alt = tx('wechatQrAlt', '我的微信二维码');
+    if (site.wechatQr) { fq.src = site.wechatQr; fq.hidden = false; }
+    else { fq.hidden = true; fq.removeAttribute('src'); }
+  }
+  const fcap = $('#footerQrCaption');
+  if (fcap) {
+    fcap.textContent = tx('footerQrCaption', '长按上面的二维码就能加我（部分浏览器支持）');
+    fcap.hidden = IN_WECHAT || !site.wechatQr;
+  }
+  const fid = $('#footerWechatId');
+  if (fid) fid.textContent = site.wechat || tx('wechatEmpty', '（还没设置微信号）');
+}
+
 function renderHero() {
   const z = state.zone;
-  const p = z.profile || {};
+  const p = profile();
   const site = state.site;
   document.body.dataset.kind = z.kind || 'booking';
 
@@ -192,14 +248,16 @@ function renderHero() {
     .map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
   $('#announcement').textContent = p.announcement || '';
   $('#acceptingDot').classList.toggle('on', !!site.accepting);
-  $('#acceptingText').textContent = site.accepting ? '开放接单' : '暂时休整';
+  $('#acceptingText').textContent = site.accepting
+    ? tx('acceptingOn', '开放接单') : tx('acceptingOff', '暂时休整');
+  $('#copyWechat').textContent = tx('wechatCta', '加微信');
 
   const wechatLine = $('#wechatLine');
   if (site.wechat) {
-    wechatLine.innerHTML = `微信号：<b id="wechatValue">${escapeHtml(site.wechat)}</b>`
+    wechatLine.innerHTML = `${escapeHtml(tx('wechatLabel', '微信号：'))}<b id="wechatValue">${escapeHtml(site.wechat)}</b>`
       + (IN_WECHAT || typeof IN_WECHAT === 'undefined'
-        ? '<span class="wechat-tip">长按可复制</span>'
-        : '<span class="wechat-tip">点一下复制，去微信粘贴</span>');
+        ? `<span class="wechat-tip">${escapeHtml(tx('wechatCopyTip', '长按可复制'))}</span>`
+        : `<span class="wechat-tip">${escapeHtml(tx('wechatCopyTipBrowser', '点一下复制，去微信粘贴'))}</span>`);
     wechatLine.hidden = false;
   } else {
     wechatLine.hidden = true;
@@ -207,57 +265,85 @@ function renderHero() {
 
   const hero = p.heroImage || '';
   $('#heroMedia').hidden = !hero;
+  // ★ 首屏主视觉是 object-fit: cover（太高就会被裁），位置由后台九宫格决定
   $('#heroMedia').innerHTML = hero
-    ? `<img src="${hero}" alt="${escapeHtml(p.game || z.name)}">` : '';
+    ? `<img src="${hero}" alt="${escapeHtml(p.game || z.name)}"
+         style="object-position:${escapeHtml(pos('heroImage'))}">` : '';
   $('#heroGrid').classList.toggle('with-media', !!hero);
 
   // 首屏主按钮：预约制 → 看空档；服务制 → 看价目表。
   // ⚠️ 服务制以前写的是"加微信直接下单"，可旁边就有一个「加微信」按钮 ——
   //    两个按钮做同一件事，客户会懵。而且刚进页面的人最想知道的是"多少钱"，
   //    所以主按钮指向价目表，加微信交给旁边那个按钮。
+  //    这两句话现在都在后台「文案」里能改（zoneCtaBooking / zoneCtaService）。
   const primary = $('#heroPrimary');
   if (z.kind === 'booking') {
-    primary.textContent = '看空档时间';
+    primary.textContent = tx('zoneCtaBooking', '看空档时间');
     primary.href = '#schedule';
   } else {
-    primary.textContent = '看价目表';
+    primary.textContent = tx('zoneCtaService', '看价目表');
     primary.href = '#servicePriceBlock';
   }
   primary.hidden = false;
 
   $('#zoneHero').classList.toggle('has-bg', !!p.background);
   applyBackground();
+  renderFooterTexts();
 
   $('#footerName').textContent = [site.brand || site.name, p.game || z.name]
     .filter(Boolean).join(' · ');
-  $('#footerHint').textContent = z.kind === 'booking'
-    ? '选好时间点一下就锁上了，我这边立刻收到消息。'
-    : '还没想好要哪一档？加我问一句，说清需求和工期就行。';
-  $('#footerZone').textContent = `当前页面：${z.name}（/z/${z.id}）`;
+}
 
-  // 页脚收尾区：二维码 + 微信号（读完这页的人，这里是他最后的出口）
-  const fq = $('#footerQr');
-  if (fq) {
-    if (site.wechatQr) { fq.src = site.wechatQr; fq.hidden = false; }
-    else { fq.hidden = true; fq.removeAttribute('src'); }
-  }
-  const fcap = $('#footerQrCaption');
-  if (fcap) fcap.hidden = IN_WECHAT || !site.wechatQr;
-  const fid = $('#footerWechatId');
-  if (fid) fid.textContent = site.wechat || '（还没设置微信号）';
+/** 时间表 / 图例 / 各种标题上的字：全部来自文案表（renderHero 之后调一次） */
+function renderTexts() {
+  $('#priceTitle').textContent = tx('priceTitle', '玩的方式你选，陪伴我来。');
+  $('#priceHint').textContent = tx('priceHint', '明码标价 · 个人直约 · 按实际游玩时间计费');
+  $('#featuredTitle').textContent = tx('featuredTitle', '主推档位');
+  $('#priceSheetTitle').textContent = tx('priceSheetTitle', '完整价目表');
+  $('#priceSheetHint').textContent = tx('priceSheetHint', '点标题展开 / 收起');
+  $('#priceSheetImageLabel').textContent = tx('priceSheetImageLabel', '完整价目表（长图）');
+  $('#scheduleTitle').textContent = tx('scheduleTitle', '你的时间，我来配合。');
+  $('#scheduleHint').textContent = tx('scheduleHint',
+    '每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期');
+  $('#sharedNotice').textContent = tx('sharedNotice',
+    '这份时间表是全部服务共用的：不管约哪个游戏，占的都是同一批时段。');
+  $('#legendFree').textContent = tx('legendFree', '可预约');
+  $('#legendBooking').textContent = tx('legendBooking', '已预约');
+  $('#legendRest').textContent = tx('legendRest', '休息 / 不接单');
+  $('#legendPast').textContent = tx('legendPast', '已过去');
+  $('#selectionHint').textContent = SELECTION_HINT();
+  $('#nextStep').textContent = tx('nextStep', '下一步：选择模式');
+  // 待确认弹窗里那些标签和小字
+  $('#modeTitle').textContent = tx('modeTitle', '选择模式');
+  $('#modeHint').textContent = tx('modeHint',
+    '选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。');
+  $('#contactTypeLabel').textContent = tx('contactTypeLabel', '联系方式');
+  $('#contactTypeHint').textContent = tx('contactTypeHint', '填哪个都行，方便联系。');
+  $('#contactLabel').textContent = tx('contactLabel', '你的联系方式（必填）');
+  $('#contactHint').textContent = tx('contactHint',
+    '请填真实能加上的号——填错了我加不到你，这单就联系不上了（也可以直接加我，见页面顶部）');
+  $('#noteLabel').textContent = tx('noteLabel', '备注（选填）');
+  $('#bookNote').placeholder = tx('notePlaceholder', '例如：想玩大坝、晚上可能晚到 10 分钟');
+  $('#lockWarn').textContent = tx('lockWarn',
+    '⚠️ 点「立即锁定时间」后，这几个小时会立刻被锁定，别人就点不动了；如需取消请微信联系我。');
+  $('#doneTitle').textContent = tx('doneTitle', '时间已锁定 ✅');
+  $('#doneNote').textContent = tx('doneNote', '时间预约成功Ciallo～(∠・ω< )⌒★');
+  $('#doneWechatTitle').textContent = tx('doneWechatTitle', '下一步：加我微信');
+  $('#doneCloseHint').textContent = tx('doneCloseHint', '要取消或改时间，微信上跟我说一声就行。');
+  applyContactPlaceholder();
 }
 
 /* ---------- A. 预约制：三档价格 ---------- */
 function renderPriceCards() {
-  const prices = (state.zone.profile || {}).prices || [];
-  $('#priceTitle').textContent = `玩的方式你选，陪伴我来。`;
+  const prices = (profile().prices) || [];
   $('#priceCards').innerHTML = prices.map((it, i) => `
     <article class="card">
       <div class="no">模式 / ${pad(i + 1)}</div>
       <h3>${escapeHtml(it.name)}</h3>
       <p>${escapeHtml(it.description || '')}</p>
       <div class="price">¥${Number(it.price) || 0}<small> / 小时</small></div>
-    </article>`).join('') || '<div class="empty-state">这个分区还没有设置报价，去后台加一档。</div>';
+    </article>`).join('')
+    || `<div class="empty-state">${escapeHtml(tx('priceEmptyBooking', '这个分区还没有设置报价，去后台加一档。'))}</div>`;
 }
 
 /* ---------- B. 服务制：主推档位 + 分组价目表 ---------- */
@@ -267,7 +353,7 @@ function allItems() {
 }
 
 function renderServicePrices() {
-  const p = state.zone.profile || {};
+  const p = profile();
   const groups = p.priceGroups || [];
   const items = allItems();
   const featuredIds = p.featured || [];
@@ -278,16 +364,18 @@ function renderServicePrices() {
     featured = featured.concat(extra).slice(0, 3);
   }
 
-  $('#serviceTitle').textContent = `${p.game || state.zone.name} · 价目表`;
+  // 标题里带 {zone}（= 游戏名 / 分区名）；改了游戏名，标题跟着变
+  $('#serviceTitle').textContent = tx('servicePriceTitle', `${p.game || state.zone.name} · 价目表`,
+    { zone: p.game || state.zone.name });
   // 副标题那句小字来自「大类的小字」（后台 → 分区管理 → 大类那一行的第二个输入框），
   // 不再写死在 HTML 里 —— 想改成"包月 / 按量""按需报价"都行
   const hintEl = $('#serviceHint');
   if (hintEl) {
     const cat = (state.nav || []).find((g) => g.id === state.zone.category);
     const hint = (cat && cat.hint) || (state.zone.kind === 'booking' ? '按小时预约' : '按需报价');
-    hintEl.textContent = `加微信直接下单 · ${hint}`;
+    hintEl.textContent = `${tx('servicePriceHint', '加微信直接下单')} · ${hint}`;
   }
-  $('#featuredTitle').textContent = featured.length ? '主推档位' : '';
+  $('#featuredTitle').textContent = featured.length ? tx('featuredTitle', '主推档位') : '';
   $('#featuredCards').innerHTML = featured.map((it) => `
     <article class="card featured-card">
       ${it.hot ? '<span class="badge hot">⭐ 推荐</span>' : ''}
@@ -296,7 +384,8 @@ function renderServicePrices() {
       <div class="price-text">${escapeHtml(it.price || '价格私聊')}</div>
       <p>${escapeHtml(it.note || '')}</p>
     </article>`).join('')
-    || '<div class="empty-state">还没设置主推档位。去后台「分区管理 → 编辑 → 价目表」勾几个 ⭐ 主推。</div>';
+    || `<div class="empty-state">${escapeHtml(tx('priceEmptyService',
+      '还没设置主推档位。去后台「分区管理 → 编辑 → 价目表」勾几个 ⭐ 主推。'))}</div>`;
 
   $('#priceGroups').innerHTML = groups.map((g, gi) => `
     <details class="price-group" ${gi === 0 ? 'open' : ''}>
@@ -314,7 +403,8 @@ function renderServicePrices() {
           </tr>`).join('')}</tbody>
       </table>
     </details>`).join('')
-    || '<div class="empty-state">还没有价目表。去后台「分区管理 → 编辑 → 价目表」加一组，或者用「批量粘贴导入」。</div>';
+    || `<div class="empty-state">${escapeHtml(tx('groupsEmpty',
+      '还没有价目表。去后台「分区管理 → 编辑 → 价目表」加一组，或者用「批量粘贴导入」。'))}</div>`;
 
   const sheet = p.priceSheetImage || '';
   $('#priceSheetBox').hidden = !sheet;
@@ -327,12 +417,16 @@ function renderServicePrices() {
 
 /* ---------- 服务承诺 ---------- */
 function renderPromises() {
-  const p = state.zone.profile || {};
+  const p = profile();
   const booking = (state.zone.kind || 'booking') === 'booking';
-  $('#promiseTitle').textContent = booking ? '下单前，聊清楚这几件事' : '服务说明';
+  $('#promiseTitle').textContent = booking
+    ? tx('promiseTitleBooking', '下单前，聊清楚这几件事')
+    : tx('promiseTitleService', '服务说明');
   $('#promiseList').innerHTML = (p.promises || [])
     .map((t) => `<li>${escapeHtml(t)}</li>`).join('')
-    || `<li>还没有填写${booking ? '服务承诺' : '服务说明'}，去后台这个分区的资料里补上。</li>`;
+    || `<li>${escapeHtml(booking
+      ? tx('promiseEmptyBooking', '还没有填写服务承诺，去后台这个分区的资料里补上。')
+      : tx('promiseEmptyService', '还没有填写服务说明，去后台这个分区的资料里补上。'))}</li>`;
 }
 
 /* ---------- 时间表（只有预约制分区会跑到这里） ---------- */
@@ -348,7 +442,12 @@ function slotsByDay() {
 }
 
 function statusText(status) {
-  return { free: '可预约', booking: '已预约', rest: '休息', past: '已过去', closed: '停接' }[status] || status;
+  // 格子上写的字（图例那几句是另外一组 key，两句可以不一样长）
+  return {
+    free: tx('slotFree', '可预约'), booking: tx('slotBooking', '已预约'),
+    rest: tx('slotRest', '休息'), past: tx('slotPast', '已过去'),
+    closed: tx('slotClosed', '停接'),
+  }[status] || status;
 }
 
 function renderSchedule() {
@@ -373,7 +472,7 @@ function renderSchedule() {
     return `<button class="hour-cell ${slot.status} ${selected ? 'selected' : ''}"
       data-start="${slot.start}" ${clickable ? '' : 'disabled'}
       title="${fullLabel(slot.start)}">${hhmm(slot.start)}<small>${
-        selected ? '已选' : statusText(slot.status)}</small></button>`;
+        selected ? escapeHtml(tx('slotSelected', '已选')) : escapeHtml(statusText(slot.status))}</small></button>`;
   }).join('');
 }
 
@@ -428,18 +527,21 @@ async function verifySelected() {
  *    微信里长按通常能识别，但版本/机型/图片压缩都可能让它认不出来。
  *    所以**微信内也要把"识别不出来就复制微信号"这条退路说清楚**。
  *
+ * ★ 三种情况三句话，都在后台「文案」里能改（wechatAddQr / wechatAddNoQr / wechatAddBrowser）；
+ *   返回的是**纯文本**（调用方用 textContent 放进去），不认 HTML 标签。
+ *
  * @param {boolean} hasQr  有没有上传二维码
  * @param {string}  tail   加上好友之后要做什么（例如"把上面的时间发我一下。"）
  */
 function wechatAddHint(hasQr, tail) {
   if (!IN_WECHAT) {
     // 微信以外的浏览器：长按基本识别不了，直接说唯一的可靠办法
-    return '若网页无法识别二维码，请直接复制我的微信并添加';
+    return tx('wechatAddBrowser', '若网页无法识别二维码，请直接复制我的微信并添加');
   }
   if (!hasQr) {
-    return `搜下面的微信号加我。${tail}`;
+    return `${tx('wechatAddNoQr', '搜下面的微信号加我。')}${tail}`;
   }
-  return `长按二维码识别加我；<b>识别不出来就点下面的「复制微信号」</b>。${tail}`;
+  return `${tx('wechatAddQr', '长按二维码识别加我；识别不出来就点下面的「复制微信号」。')}${tail}`;
 }
 
 
@@ -449,11 +551,12 @@ function currentContactType() {
 }
 
 function applyContactPlaceholder() {
-  $('#bookContact').placeholder = CONTACT_PLACEHOLDER[currentContactType()] || '你的联系方式';
+  const [key, fallback] = CONTACT_PLACEHOLDER_KEYS[currentContactType()] || CONTACT_PLACEHOLDER_KEYS.wechat;
+  $('#bookContact').placeholder = tx(key, fallback);
 }
 
 function renderModeModal() {
-  const prices = (state.zone.profile || {}).prices || [];
+  const prices = (profile().prices) || [];
   if (state.modeIndex >= prices.length) state.modeIndex = 0;
   $('#modeCards').innerHTML = prices.map((it, i) => `
     <article class="card selectable ${i === state.modeIndex ? 'active' : ''}" data-mode="${i}">
@@ -461,7 +564,8 @@ function renderModeModal() {
       <h3>${escapeHtml(it.name)}</h3>
       <p>${escapeHtml(it.description || '')}</p>
       <div class="price">¥${Number(it.price) || 0}<small> / 小时</small></div>
-    </article>`).join('') || '<div class="empty-state">还没有设置报价，请先在后台添加。</div>';
+    </article>`).join('')
+    || `<div class="empty-state">${escapeHtml(tx('priceEmptyBooking', '这个分区还没有设置报价，去后台加一档。'))}</div>`;
 
   const price = prices[state.modeIndex];
   const total = state.selected.size;
@@ -474,7 +578,7 @@ function renderModeModal() {
 
 /* ---------- 主路径：立即锁定时间 ---------- */
 async function bookNow() {
-  const price = ((state.zone.profile || {}).prices || [])[state.modeIndex];
+  const price = (profile().prices || [])[state.modeIndex];
   const hours = Array.from(state.selected).sort((a, b) => a - b);
   if (!price) return toast('还没有设置报价，请先在后台添加。', true);
   if (!hours.length) return toast('请先选择时间', true);
@@ -517,7 +621,8 @@ async function bookNow() {
     if (wxEl) wxEl.textContent = wxId || '（还没设置微信号）';
     const wxHint = $('#doneWechatHint');
     if (wxHint) {
-      wxHint.innerHTML = wechatAddHint(!!qr, '加上之后把时间发我一下。');
+      // 纯文本，所以用 textContent（见 wechatAddHint 的说明）
+      wxHint.textContent = wechatAddHint(!!qr, tx('wechatAddTail', '加上之后，把上面的时间发我一下就行。'));
     }
     // 不在微信里时：二维码缩小 + 「复制微信号」变主按钮（那才是他能做成的事）
     const copyWxBtn = $('#copyDoneWechat');
@@ -531,7 +636,7 @@ async function bookNow() {
     const qrCap = $('#doneQrCaption');
     if (qrCap) qrCap.hidden = IN_WECHAT || !qr;
     $('#doneModal').classList.add('open');
-    toast('时间已锁定，记得把文案发给我');
+    toast(tx('bookedToast', '时间已锁定，记得加我微信'));
   } catch (err) {
     handleBookError(err);
   } finally {
@@ -565,7 +670,6 @@ function handleBookError(err) {
 
 /** 锁定成功页 */
 function renderDone(data) {
-  const site = state.site || {};
   $('#doneLocks').innerHTML = (data.locks || []).map((seg) => `
     <article class="record">
       <span class="badge ok">已锁定</span>
@@ -578,8 +682,8 @@ function renderDone(data) {
     `项目：<b>${escapeHtml(state.zone.name || '')}</b> · 模式：<b>${escapeHtml(data.mode)}</b>`
     + ` · 共 <b>${data.totalHours}</b> 小时 · 合计 <b>¥${data.totalPrice}</b>`
     + ` · 联系方式：<b>${CONTACT_TEXT[data.contactType] || '微信'} ${escapeHtml(data.contact || '')}</b>`;
-  // 这一句是主人自己定的文案（后台改不了，下次要换直接说）
-  $('#doneNote').textContent = '时间预约成功Ciallo～(∠・ω< )⌒★';
+  // 这一句（"时间预约成功Ciallo～(∠・ω< )⌒★"）以前写死在代码里，现在在后台「文案」里能改
+  $('#doneNote').textContent = tx('doneNote', '时间预约成功Ciallo～(∠・ω< )⌒★');
 }
 
 /* ==========================================================================
@@ -602,8 +706,8 @@ function categoryName(id) {
   return hit ? hit.name : String(id || '');
 }
 
-/** 有外链时图上那个小角标。★ 文案想改就改这一处（比如改成「看视频 ↗」「看我做的站 ↗」） */
-const GALLERY_LINK_BADGE = '点开看 ↗';
+/** 有外链时图上那个小角标。★ 这句话在后台「文案」里能改（galleryLinkBadge） */
+function galleryBadge() { return tx('galleryLinkBadge', '点开看 ↗'); }
 
 function renderGalleryFilters() {
   const box = $('#galleryFilters');
@@ -632,7 +736,7 @@ function renderGallery() {
         ? `<a class="gallery-link" href="${escapeHtml(g.link)}" target="_blank"
               rel="noopener noreferrer" title="${escapeHtml(g.link)}">
              <img src="${g.image}" alt="${escapeHtml(g.title)}" loading="lazy">
-             <span class="gallery-link-badge">${GALLERY_LINK_BADGE}</span>
+             <span class="gallery-link-badge">${escapeHtml(galleryBadge())}</span>
            </a>`
         // 没外链：保持原来的行为 —— 点一下放大看图
         : `<img src="${g.image}" alt="${escapeHtml(g.title)}" data-zoom="${g.image}" loading="lazy">`}
@@ -641,7 +745,8 @@ function renderGallery() {
         <p>${escapeHtml(g.caption || '')}</p>
       </div>
     </article>`).join('')
-    : '<div class="empty-state" style="grid-column:1/-1">这个分区的展示墙还在装修中，先来找我玩一局吧。</div>';
+    : `<div class="empty-state" style="grid-column:1/-1">${escapeHtml(tx('galleryEmpty',
+      '这个分区的展示墙还在装修中，先来找我玩一局吧。'))}</div>`;
 }
 
 /* ---------- 加载 ---------- */
@@ -654,8 +759,9 @@ async function loadPublic(showToast = false) {
   state.gallery = data.gallery || [];
   state.galleryCategories = data.galleryCategories || [];   // ★ 分类（筛选按钮照它生成）
   state.syncedAt = data.serverTime;
-  // 分区资料可能刚在后台改过（报价/价格），这里整页重画一次，保持和服务端一致
+  // 分区资料可能刚在后台改过（报价/价格/文案/图片位置），这里整页重画一次，保持和服务端一致
   renderTabs();
+  renderTexts();       // ★ 文案先铺一遍，下面各块再用（顺序无所谓，但先铺更直观）
   renderHero();
   renderPrices();
   renderPromises();
@@ -823,6 +929,7 @@ function bindEvents() {
 (async function main() {
   bindEvents();
   renderTabs();
+  renderTexts();       // ★ 文案（默认值 + 后台改过的）先铺一遍
   renderHero();
   renderPrices();
   renderPromises();

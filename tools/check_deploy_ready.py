@@ -25,7 +25,8 @@ except Exception:
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 problems = []
 
-SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", ".git"}
+# 这些目录不算"要上传的东西"：业务数据、临时测试库、字节码缓存、截图
+SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", "_shots2", ".git"}
 
 REQUIRED = ["app.py", "requirements.txt", "render.yaml",
             "static/style.css", "static/site.js", "static/admin.js",

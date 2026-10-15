@@ -51,6 +51,9 @@
     <button class="tab" data-tab="income">收入</button>
     <button class="tab" data-tab="zones">分区管理</button>
     <button class="tab" data-tab="profile">资料</button>
+    <!-- ★ 「文案」紧挨着「资料」：这两个都是"改客户看到的东西"
+         （资料管事实：价格、图片、介绍；文案管口气：每一句话怎么说） -->
+    <button class="tab" data-tab="texts">文案</button>
     <button class="tab" data-tab="prices">报价</button>
     <button class="tab" data-tab="gallery">展示墙</button>
     <button class="tab" data-tab="settings">安全与备份</button>
@@ -333,6 +336,11 @@
         五个位置都可以留空。选完图片会先自动压缩，<b>再点下面的「保存这个分区」才会生效</b>。
         建议尺寸：分享图 1200×630；首屏图用 PNG 透明底；价目表长图宽度 1000 左右。
       </p>
+      <p class="hint" style="margin:-8px 0 14px">
+        📐 「显示位置」是给<b>会被裁掉一部分</b>的图用的：图会被裁掉一部分时，用这个决定保留哪一块。
+        点九宫格里的一格就行（默认「居中」= 以前的样子）。<b>微信分享图</b>不提供这个：
+        卡片怎么裁由微信 / QQ 自己决定；<b>价目表长图</b>是整张缩放显示的，不会裁。
+      </p>
       <div class="upload-grid">
         <div class="upload-item">
           <label>分区图标（首页卡片小图，正方形最好）</label>
@@ -345,12 +353,16 @@
           <img class="upload-preview wide" id="zBackgroundPreview" alt="">
           <input type="file" id="zBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="background">清除背景图</button>
+          <label>显示位置（会被裁掉一块，这里决定保留哪块）</label>
+          <div class="pos-picker" id="posZoneBackground"></div>
         </div>
         <div class="upload-item">
           <label>首屏主视觉（大标题旁边，建议 PNG 透明底）</label>
           <img class="upload-preview" id="zHeroImagePreview" alt="">
           <input type="file" id="zHeroImageFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="heroImage">清除首屏图</button>
+          <label>显示位置（太高或太宽时会被裁，这里决定保留哪块）</label>
+          <div class="pos-picker" id="posZoneHero"></div>
         </div>
         <div class="upload-item">
           <label>微信分享图（1200×630，转发时显示这张）</label>
@@ -412,6 +424,8 @@
           <img class="upload-preview" id="avatarPreview" alt="">
           <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="avatar">清除头像</button>
+          <label>显示位置（不是正方形时会被裁）</label>
+          <div class="pos-picker" id="posAvatar"></div>
         </div>
         <div class="upload-item">
           <label>微信二维码（选填，放在首页「关于我」下面）</label>
@@ -424,14 +438,22 @@
           <img class="upload-preview wide" id="siteBackgroundPreview" alt="">
           <input type="file" id="siteBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="background">清除首页背景图</button>
+          <label>显示位置（铺满屏幕时会被裁）</label>
+          <div class="pos-picker" id="posHomeBackground"></div>
         </div>
         <div class="upload-item">
           <label>主页首屏主视觉（选填，放在首页大标题上面；PNG 透明底最好看）</label>
           <img class="upload-preview" id="homeHeroPreview" alt="">
           <input type="file" id="homeHeroFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="heroImage">清除首屏主视觉</button>
+          <label>显示位置（太高时会被裁）</label>
+          <div class="pos-picker" id="posHomeHero"></div>
         </div>
       </div>
+      <p class="hint" style="margin:12px 0 0">
+        📐 图会被裁掉一部分时，用上面的九宫格决定保留哪一块（默认「居中」= 以前的样子）。
+        <b>微信二维码</b>不提供位置控制：它必须完整显示（裁掉一个角就可能扫不出来）。
+      </p>
       <div class="field" style="max-width:340px;margin-top:16px">
         <label for="pSiteDim">首页背景压暗程度：<b id="siteDimValue">72</b>%（数字越大，文字越清楚）</label>
         <input type="range" id="pSiteDim" min="0" max="90" step="2" value="72">
@@ -458,6 +480,60 @@
       <span class="hint">（两个区块一起保存）</span>
     </div>
     </div><!-- /homeEditBlock -->
+  </section>
+
+  <!-- ==================== ★ 文案（客户看到的每一句话 + 服务条款） ====================
+       为什么要有这一页：以前这些句子是写死在 HTML 和 JS 里的，想改一句得改代码。
+       现在这一页是**照着 app.py 的 TEXT_GROUPS 目录自动生成**的（#textGroupList），
+       所以加一句新文案只需要在目录里加一行，这里自动就多一个输入框。 -->
+  <section data-panel="texts" style="display:none">
+    <div class="panel">
+      <h2>客户看到的每一句话</h2>
+      <p class="sub">
+        这些就是客户在首页、分区页、下单弹窗、页脚里看到的中文。
+        <b>留空 = 用默认那句话。</b>改完点「保存文案」，前台立刻生效（让客户刷新一下页面就能看到）。
+      </p>
+      <p class="hint" style="margin:-8px 0 16px">
+        ⚠️ 三条要知道的：① 文案是<b>纯文本</b>，写 <code>&lt;b&gt;加粗&lt;/b&gt;</code> 不会被当成标签，会原样显示出来；
+        ② 带花括号的 <code>{name}</code> <code>{zone}</code> <code>{max}</code> 是"变量"
+        （分别会变成你的昵称 / 分区名 / 一次最多几小时），<b>别删掉</b>，不然那句话就和实际规则对不上了；
+        ③ 每一行左边的字是"这句话出现在哪"，右边的框才是你要改的内容。
+      </p>
+      <div id="textGroupList"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px">
+        <button class="button primary" id="saveTexts">保存文案</button>
+        <button class="button ghost" id="resetAllTexts">整页恢复默认</button>
+        <span class="hint" id="textsState"></span>
+      </div>
+    </div>
+
+    <!-- 服务条款：一个标题 + 可增删的小节（每节 = 小标题 + 正文），↑↓ 调顺序 -->
+    <div class="panel">
+      <h2>服务条款（客户点开 /terms 看到的那一页）</h2>
+      <p class="sub">
+        这一页是给客户看的"把话说清楚"：服务内容、怎么下单、怎么付钱、取消与改期、
+        <b>账号安全</b>、责任范围、怎么找你。默认那份是照"个人接单"的实际情况写的，可以直接用，也可以改成你自己的口气。
+      </p>
+      <p class="hint" style="margin:-8px 0 16px">
+        正文里<b>空一行 = 另起一段</b>，单独换行就是换行。正文里写 <code>{wechat}</code> 会自动变成你的微信号
+        （换了微信号不用回来改这里）。「最后更新」的日期是<b>你每次点保存那天</b>自动写上的。
+      </p>
+      <div class="field">
+        <label for="termsTitleInput">条款标题（浏览器标签和分享卡片上都用它）</label>
+        <input id="termsTitleInput" maxlength="40" placeholder="服务条款">
+      </div>
+      <p class="hint" id="termsMeta"></p>
+      <div id="termsSections"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="button ghost small" id="addTermSection">+ 新增一节</button>
+        <button class="button ghost small" id="resetTerms">恢复默认条款</button>
+        <a class="button ghost small" href="/terms" target="_blank">打开条款页看看</a>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px">
+        <button class="button primary" id="saveTerms">保存条款</button>
+        <span class="hint" id="termsState"></span>
+      </div>
+    </div>
   </section>
 
   <!-- ==================== 报价（独立标签页） ==================== -->

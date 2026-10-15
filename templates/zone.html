@@ -32,6 +32,8 @@
       <a href="#services" id="anchorPrice">报价</a>
       <a href="#schedule" id="anchorSchedule">空档</a>
       <a href="#gallery">展示墙</a>
+      <!-- 服务条款入口（这一页也要有：客户看完价目往往就想看条款） -->
+      <a href="/terms" id="navTerms">服务条款</a>
     </nav>
   </div>
 </header>
@@ -68,7 +70,7 @@
           <div class="section-no">01 / 怎么玩</div>
           <h2 id="priceTitle">玩的方式你选，陪伴我来。</h2>
         </div>
-        <p>明码标价 · 个人直约 · 按实际游玩时间计费</p>
+        <p id="priceHint">明码标价 · 个人直约 · 按实际游玩时间计费</p>
       </div>
       <div class="cards" id="priceCards"></div>
     </div>
@@ -86,12 +88,12 @@
       <h3 class="sub-title" id="featuredTitle">主推档位</h3>
       <div class="cards featured" id="featuredCards"></div>
 
-      <h3 class="sub-title">完整价目表</h3>
+      <h3 class="sub-title" id="priceSheetTitle">完整价目表</h3>
       <p class="hint" id="priceSheetHint">点标题展开 / 收起</p>
       <div class="price-groups" id="priceGroups"></div>
 
       <div class="price-sheet" id="priceSheetBox" hidden>
-        <label>完整价目表（长图）</label>
+        <label id="priceSheetImageLabel">完整价目表（长图）</label>
         <img id="priceSheetImg" alt="完整价目表" data-zoom="">
       </div>
     </div>
@@ -101,18 +103,19 @@
 <!-- ============ 预约时间表（只有预约制分区才显示） ============ -->
 <section class="section" id="schedule" hidden>
   <div class="container">
-    <div class="section-head">
+<    <div class="section-head">
       <div>
         <div class="section-no">02 / 空档时间</div>
-        <h2>你的时间，我来配合。</h2>
+        <h2 id="scheduleTitle">你的时间，我来配合。</h2>
       </div>
-      <p>每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期</p>
+      <p id="scheduleHint">每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期</p>
     </div>
 
     <div class="schedule-card">
-      <div class="notice" id="sharedNotice">
-        这份时间表是<b>全部服务共用</b>的：不管约哪个游戏，占的都是同一批时段。
-      </div>
+      <!-- 这条提示以前里面有个写死的 <b>加粗；现在整句都能在后台改，
+           而文案一律当**纯文本**渲染（不认 HTML 标签，免得粘一句带尖括号的话把页面弄坏），
+           所以这里去掉了 <b>。灰底框本身就让这句话够醒目了。 -->
+      <div class="notice" id="sharedNotice">这份时间表是全部服务共用的：不管约哪个游戏，占的都是同一批时段。</div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <strong id="dayTitle">—</strong>
         <span class="hint" id="dayFree">—</span>
@@ -123,10 +126,10 @@
       <div class="hour-grid" id="hourGrid"></div>
 
       <div class="legend">
-        <span><i class="k-free"></i>可预约</span>
-        <span><i class="k-booking"></i>已预约</span>
-        <span><i class="k-rest"></i>休息 / 不接单</span>
-        <span><i class="k-past"></i>已过去</span>
+        <span><i class="k-free"></i><span id="legendFree">可预约</span></span>
+        <span><i class="k-booking"></i><span id="legendBooking">已预约</span></span>
+        <span><i class="k-rest"></i><span id="legendRest">休息 / 不接单</span></span>
+        <span><i class="k-past"></i><span id="legendPast">已过去</span></span>
       </div>
 
       <div class="selection-bar">
@@ -194,37 +197,43 @@
   </div>
   <div class="container">
     <p id="footerZone"></p>
-    <p>本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。</p>
+    <!-- 页脚小链接：条款页从这里进（「服务条款」这几个字在后台「文案」里能改） -->
+    <p class="footer-links">
+      <a href="/#about" id="footerAboutLink">关于我</a>
+      <span class="sep">·</span>
+      <a href="/terms" id="footerTermsLink">服务条款</a>
+    </p>
+    <p id="footerDisclaimer">本页为个人服务页面，与游戏官方无隶属关系；游戏素材版权归原权利人所有。</p>
   </div>
 </footer>
 
 <!-- ============ 选模式 → 立即锁定时间 / 只复制文案（预约制分区才有） ============ -->
 <div class="modal-mask" id="modeModal">
   <div class="modal">
-    <h3>选择模式</h3>
-    <p class="modal-sub">选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。</p>
+    <h3 id="modeTitle">选择模式</h3>
+    <p class="modal-sub" id="modeHint">选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。</p>
     <div class="cards" id="modeCards"></div>
     <div style="margin-top:18px">
       <div class="hint" id="estimate"></div>
       <div class="grid-2" style="margin-top:12px;align-items:end">
         <div class="field" style="margin:0">
-          <label for="bookContactType">联系方式</label>
+          <label for="bookContactType" id="contactTypeLabel">联系方式</label>
           <select id="bookContactType">
             <option value="wechat">微信</option>
             <option value="xianyu">闲鱼</option>
             <option value="qq">QQ</option>
           </select>
-          <span class="hint">填哪个都行，方便联系。</span>
+          <span class="hint" id="contactTypeHint">填哪个都行，方便联系。</span>
         </div>
         <div class="field" style="margin:0">
-          <label for="bookContact">你的联系方式（必填）</label>
+          <label for="bookContact" id="contactLabel">你的联系方式（必填）</label>
           <input id="bookContact" maxlength="40" placeholder="你的微信号">
-          <p class="hint" style="margin:4px 0 0">请填<b>真实能加上的号</b>——填错了我加不到你，
+          <p class="hint" id="contactHint" style="margin:4px 0 0">请填真实能加上的号——填错了我加不到你，
             这单就联系不上了（也可以直接加我，见页面顶部）</p>
         </div>
       </div>
       <div class="field" style="margin-top:12px">
-        <label for="bookNote">备注（选填）</label>
+        <label for="bookNote" id="noteLabel">备注（选填）</label>
         <input id="bookNote" maxlength="200" placeholder="例如：想玩大坝、晚上可能晚到 10 分钟">
       </div>
     </div>
@@ -232,7 +241,7 @@
       <button class="button primary" id="bookNow">立即锁定时间</button>
       <button class="button ghost" id="closeModal">关闭</button>
     </div>
-    <p class="hint" style="margin-top:12px">⚠️ 点「立即锁定时间」后，这几个小时<b>会立刻被锁定</b>，别人就点不动了；如需取消请微信联系我。</p>
+    <p class="hint" id="lockWarn" style="margin-top:12px">⚠️ 点「立即锁定时间」后，这几个小时会立刻被锁定，别人就点不动了；如需取消请微信联系我。</p>
     <p class="hint error" id="bookState"></p>
   </div>
 </div>
@@ -240,7 +249,7 @@
 <!-- ============ 锁定成功 ============ -->
 <div class="modal-mask" id="doneModal">
   <div class="modal">
-    <h3>时间已锁定 ✅</h3>
+    <h3 id="doneTitle">时间已锁定 ✅</h3>
     <p class="modal-sub" id="doneNote">这段时间已经给你留住了，别人约不到了。</p>
     <div class="record-list" id="doneLocks"></div>
     <p class="hint" id="doneSummary" style="margin:12px 0 0"></p>
@@ -250,7 +259,7 @@
       <img id="doneQr" alt="我的微信二维码" hidden>
       <span class="hint" id="doneQrCaption" hidden>长按识别<br>（部分浏览器支持）</span>
       <div class="done-wechat-text">
-        <p class="done-wechat-title">下一步：<b>加我微信</b></p>
+        <p class="done-wechat-title" id="doneWechatTitle">下一步：加我微信</p>
         <p class="hint" id="doneWechatHint">加上之后，把上面的时间发我一下就行。</p>
         <p class="done-wechat-id">微信号：<b id="doneWechat"></b></p>
         <div class="done-wechat-actions">
@@ -262,7 +271,7 @@
     <div class="modal-actions">
       <button class="button primary" id="closeDone">知道了</button>
     </div>
-    <p class="hint" style="margin-top:12px">要取消或改时间，微信上跟我说一声就行。</p>
+    <p class="hint" id="doneCloseHint" style="margin-top:12px">要取消或改时间，微信上跟我说一声就行。</p>
   </div>
 </div>
 

@@ -98,12 +98,16 @@ img { max-width: 100%; display: block; }
   border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 999px;
   padding: 5px 12px; text-transform: uppercase;
 }
-.hero h1 {
+/* ⚠️ 这里必须同时写 .hero 和 .zone-hero：
+   个人主页用的是 <section class="hero">，分区页用的是 <section class="zone-hero">，
+   只写 .hero 的话，分区页的首屏大标题就拿不到这些样式 ——
+   表现是：换行被吞掉（没有 white-space: pre-line）、字号退回浏览器默认。 */
+.hero h1, .zone-hero h1 {
   font-size: clamp(34px, 6.4vw, 64px); line-height: 1.08;
   margin: 20px 0 14px; letter-spacing: -.01em; white-space: pre-line;
 }
-.hero h1 em { font-style: normal; color: var(--accent); }
-.hero .tagline { color: var(--muted); font-size: 16px; max-width: 620px; }
+.hero h1 em, .zone-hero h1 em { font-style: normal; color: var(--accent); }
+.hero .tagline, .zone-hero .tagline { color: var(--muted); font-size: 16px; max-width: 620px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; align-items: center; }
 .status-dot {
   display: inline-flex; align-items: center; gap: 8px;
@@ -777,4 +781,81 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .table-wrap .price-table td:first-child, .table-wrap .price-table td:last-child {
     white-space: normal;
   }
+  /* ★ 文案页在手机上：左右两栏（说明 + 输入框）挤不下，改成上下排 */
+  .text-row { grid-template-columns: 1fr; gap: 6px; }
+  .text-label { padding-top: 0; }
+  .text-default { grid-column: 1; }
 }
+
+/* ==========================================================================
+   ★ 服务条款页（/terms）—— 内容全部由 app.py 服务端拼好（见 terms_sections_html）
+   ========================================================================== */
+.terms-title { font-size: clamp(26px, 4vw, 38px); margin: 6px 0 0; line-height: 1.2; }
+.terms-body { padding: 26px 28px; }
+.terms-section h2 { font-size: 16.5px; margin: 26px 0 10px; color: var(--accent); }
+.terms-section:first-child h2 { margin-top: 0; }
+.terms-body p { margin: 0 0 12px; line-height: 1.9; }
+.terms-section:last-child p:last-child { margin-bottom: 0; }
+.terms-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-top: 18px;
+}
+.terms-foot .done-wechat-id { margin: 0; }
+
+/* ==========================================================================
+   ★ 文案可改（第四刀）用到的样式
+   ========================================================================== */
+
+/* 顶部导航里"你正在看的这一页"（条款页的「服务条款」用它高亮） */
+.nav-links a.active { color: var(--text); }
+
+/* 页脚那一行小链接（关于我 · 服务条款） */
+.footer-links { margin: 0 0 6px; }
+.footer-links .sep { margin: 0 6px; opacity: .5; }
+
+/* 后台「文案」页：一组一组的输入框。左边写"这句话出现在哪"，右边是输入框 */
+.text-group {
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 14px 16px; margin-bottom: 14px;
+}
+.text-group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.text-group-head h3 { margin: 0; font-size: 14.5px; }
+.text-group-head .grow { flex: 1; min-width: 120px; }
+.text-group > p.sub { margin: 6px 0 10px; font-size: 12.5px; color: var(--muted); }
+.text-row {
+  display: grid; grid-template-columns: minmax(170px, 260px) minmax(0, 1fr);
+  gap: 4px 12px; align-items: start; padding: 9px 0; border-top: 1px dashed var(--line);
+}
+.text-row:first-of-type { border-top: 0; }
+.text-label { font-size: 12.5px; color: var(--muted); line-height: 1.55; padding-top: 9px; }
+.text-row input, .text-row textarea {
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 13.5px; width: 100%;
+}
+.text-row textarea { min-height: 76px; resize: vertical; }
+/* 只有"被改过"的那几句才会在输入框下面多一行"默认：…"，一眼看得出改动在哪 */
+.text-default { grid-column: 2; margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.text-default b { color: var(--accent2); font-weight: 400; }
+
+/* 图片「显示位置」的 3×3 九宫格 */
+.pos-picker { display: grid; grid-template-columns: repeat(3, 36px); gap: 4px; margin: 2px 0 4px; }
+.pos-btn {
+  width: 36px; height: 26px; padding: 0; font-family: inherit; font-size: 10.5px;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--panel2);
+  color: var(--muted); cursor: pointer; transition: .13s;
+}
+.pos-btn:hover { border-color: rgba(var(--accent-rgb), .5); color: var(--text); }
+.pos-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+
+/* 后台：服务条款的小节编辑器 */
+.terms-row {
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 12px 14px; margin-bottom: 10px;
+}
+.terms-row .field { margin: 0 0 8px; }
+/* 条款正文一格能写挺长（默认那几节都有七八行），textarea 太矮的话主人得在格子里滚，
+   容易看不到自己写了什么 —— 所以给足高度（还能自己拖着调大）。 */
+.terms-row textarea { min-height: 190px; }
+.terms-row .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.badge.mini { font-size: 11px; padding: 1px 6px; }
+
