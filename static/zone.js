@@ -344,6 +344,8 @@ function renderPriceCards() {
       <div class="price">¥${Number(it.price) || 0}<small> / 小时</small></div>
     </article>`).join('')
     || `<div class="empty-state">${escapeHtml(tx('priceEmptyBooking', '这个分区还没有设置报价，去后台加一档。'))}</div>`;
+  // ★ 卡片画完了才知道有几张 → 小圆点跟着卡片数量走（手机端才显示）
+  renderPriceDots();
 }
 
 /* ---------- B. 服务制：主推档位 + 分组价目表 ---------- */
@@ -444,11 +446,15 @@ function renderServicePrices() {
 }
 
 /* ---------- ★ 服务流程（几步的图）+ 常见问题（折叠块） ----------
-   位置（主人确认过的）：
-     · 服务流程 = **价目表上面**：先知道"要走几步"，再看"每一步多少钱"，
-       客户不会一上来就被价格砸懵。（HTML 上它在价格区那一块的结尾，
-       所以预约制里排在三档价格下面、服务制里排在分组价目表下面 —— 两种都对。）
-     · 常见问题 = **价目表下面**：客户正犹豫的地方，他心里那几个问题就地回答。
+   位置（2026-10-16 主人重新定过的，见 zone.html 顶部那两段注释）：
+     · 服务流程 = **档位卡下面**（价格区里面）；
+     · 承诺 / 须知 = **预约前面**；
+     · 常见问题 = **预约后面**（独立的 <section id="faq">）。
+
+   三块都能折叠：
+     · 流程、承诺 → 永远是 <details>（两端都一样，手机上也折叠）；
+     · 常见问题   → 每条一个 <details>（默认收起），整块要不要再套一层折叠
+                    由后台的 faqPanelSummary **留不留空**决定（留空 = 不套）。
 
    两块内容都是主人自己在后台整条写的（后台「文案」→ 服务流程 / 常见问题），
    默认值由服务端补齐（state.site.faq / state.site.steps），所以这里不写兜底文案。 */
@@ -456,6 +462,69 @@ function renderServicePrices() {
 /** 把 {wechat} 换成微信号（前台的 tx() 只认 {name}/{zone}/{max}，这里补一个） */
 function fillWechat(text) {
   return String(text || '').replace(/\{wechat\}/g, (state.site && state.site.wechat) || '');
+}
+
+/**
+ * ★ 折叠块摘要行里"自动拼出来的那串名字"。
+ *
+ * 为什么要自动拼：主人改了后台的步骤名 / 承诺条目，摘要就得跟着变 ——
+ * 要是把摘要写死在代码或 HTML 里，改完名字摘要还是旧的，比没有摘要还糟。
+ *
+ * @param {string[]} names   每条的名字（步骤标题 / 承诺那条文字）
+ * @param {number}   maxShow 最多显示几条（超过就截断，默认 4）
+ */
+function autoSummary(names, maxShow = 5, budget = 40) {
+  const list = (names || [])
+    .map((t) => String(t == null ? '' : t).trim().replace(/\s+/g, ' '))
+    .map((t) => shortenName(t))
+    // 只有标点的垃圾条目（数据里真出现过一条 \”、\”✗）直接丢掉
+    .filter((t) => t && /[^\s·、，,;；.。!！?？…\-]/.test(t));
+  if (!list.length) return '';
+  const out = [];
+  let used = 0;
+  for (const n of list) {
+    if (out.length >= maxShow) break;                    // 条数上限
+    if (out.length && used + n.length > budget) break;   // 字数预算（免得摘要比正文还长）
+    out.push(n);
+    used += n.length + 3;                                // +3 是分隔符 " · "
+  }
+  const more = out.length < list.length;
+  return out.join(' · ') + (more ? ' …' : '');
+}
+
+/**
+ * ★ 摘要里每一条的"短名字"：短的就原样用，长的就砍一小段。
+ *
+ * 为什么要这一步（2026-10-16 踩的）：
+ *   「怎么开始」那几步骤本身有短标题（"挑时间 / 说需求"）✓ 拼起来正好一行 ✓
+ *   但「下单前须知」那几条是【整句话】✗ 直接拼出来占了整整两行 ✗
+ *   （截图里那行长得像一段正文，折叠就等于没折 ✗）
+ * 规矩：
+ *   · ≤ 14 字 → 原样用（步骤名走这条，一个字都不动 ✓）
+ *   · > 14 字 → 在第一个标点处断开；断不了就硬切 14 字 + 省略号
+ */
+function shortenName(text, limit = 14) {
+  const s = String(text == null ? '' : text).trim();
+  if (s.length <= limit) return s;
+  const cut = s.search(/[。；！？，、,;!?]/);
+  if (cut >= 4 && cut <= limit) return s.slice(0, cut);
+  return s.slice(0, limit) + '…';
+}
+
+/** 「怎么开始」摘要行的名字来源：后台的步骤数据（改了步骤名，这里自动跟着变） */
+function stepsSummaryText() {
+  const s = (state.site && state.site.steps) || { items: [] };
+  return autoSummary((s.items || []).map((it) => it.title));
+}
+
+/** 「下单前，聊清楚这几件事」摘要行的名字来源：这个分区资料里的承诺条目 */
+function promisesSummaryText() {
+  return autoSummary(((profile().promises) || []).map((t) => t));
+}
+
+/** 摘要行右侧那串小字：后台填过就用主人写的，留空就用自动拼的（这个函数两块共用） */
+function panelTip(key, auto) {
+  return tx(key, '') || auto || '';
 }
 
 function renderSteps() {
@@ -468,6 +537,8 @@ function renderSteps() {
     return;
   }
   $('#stepsTitle').textContent = s.title || '怎么开始';
+  $('#stepsSummary').textContent = panelTip('stepsSummary', stepsSummaryText());
+  // ★ 步骤的渲染逻辑一个字没改（01/02/03 编号圆圈 + 标题 + 说明），只是搬进了 <details> 里
   $('#stepsList').innerHTML = items.map((it) => `
     <li><b>${escapeHtml(it.title || '')}</b>${
       it.desc ? `<span>${escapeHtml(fillWechat(it.desc))}</span>` : ''}</li>`).join('');
@@ -483,11 +554,35 @@ function renderFaq() {
     panel.hidden = true;
     return;
   }
-  $('#faqTitle').textContent = f.title || '常见问题';
+  const title = f.title || '常见问题';
   const sub = $('#faqSubtitle');
   if (sub) {
     sub.textContent = f.subtitle || '';
     sub.hidden = !f.subtitle;
+  }
+  // ★ 这一段在 2026-10-16 重排过顺序，但**外面看起来一模一样**：
+  //   整块要不要再套一层折叠？只有主人填了 faqPanelSummary 才套（留空 = 不套）。
+  //   两条路径用的是同一份条目 HTML 渲染，不会出现"两种状态长得不一样"。
+  //   （折叠那一路是"重画一块干净的 HTML"，所以标题和副标题也由它自己填一遍。）
+  const override = tx('faqPanelSummary', '');
+  if (override) {
+    $('#faqPanel').innerHTML = `
+      <details class="faq-panel-open">
+        <summary><span class="panel-title">${escapeHtml(title)}</span><span class="panel-tip">${escapeHtml(override)}</span></summary>
+        <div class="faq-body">
+          ${f.subtitle ? `<p class="faq-sub">${escapeHtml(f.subtitle)}</p>` : ''}
+          <div class="faq-list" id="faqList"></div>
+        </div>
+      </details>`;
+  } else {
+    $('#faqPanel').innerHTML = `
+      <div class="section-head compact">
+        <div><h2>${escapeHtml(title)}</h2></div>
+        <p class="faq-sub">${escapeHtml(f.subtitle || '')}</p>
+      </div>
+      <div class="faq-list" id="faqList"></div>`;
+    const sub2 = $('#faqPanel .faq-sub');
+    if (sub2) sub2.hidden = !f.subtitle;
   }
   // 每条一个原生 <details>，**全部默认收起**（折叠块的意思：先看到问题，想看了再点开）
   $('#faqList').innerHTML = items.map((it) => `
@@ -499,7 +594,8 @@ function renderFaq() {
 }
 
 /* ---------- 服务承诺 ---------- */
-function renderPromises() {  const p = profile();
+function renderPromises() {
+  const p = profile();
   const booking = (state.zone.kind || 'booking') === 'booking';
   $('#promiseTitle').textContent = booking
     ? tx('promiseTitleBooking', '下单前，聊清楚这几件事')
@@ -509,6 +605,225 @@ function renderPromises() {  const p = profile();
     || `<li>${escapeHtml(booking
       ? tx('promiseEmptyBooking', '还没有填写服务承诺，去后台这个分区的资料里补上。')
       : tx('promiseEmptyService', '还没有填写服务说明，去后台这个分区的资料里补上。'))}</li>`;
+  // ★ 摘要行：条目名自动拼（超过 4 条只显示前 3 条 + …），后台填了 promisesSummary 就用主人写的
+  const tip = $('#promisesSummary');
+  if (tip) tip.textContent = panelTip('promisesSummary', promisesSummaryText());
+}
+
+/* ==========================================================================
+   ★ 左侧固定导航栏（只在分区页、只在 ≥1440px 的宽屏上出现）
+   --------------------------------------------------------------------------
+   ★★ 一条铁律：**导航项绝不手写列表**。
+   主人专门点过这件事：页面从上到下是 A、B、C、D，导航栏却写成 A、C、D、B ——
+   客户按导航跳，顺序对不上，越点越糊涂。
+
+   所以这里只做一件事：**按 DOM 顺序**把带 data-nav 的块收集起来，一个一个生成导航项。
+     · 谁进导航 = 谁在 zone.html 里带了 data-nav（首屏和页脚故意没带）；
+     · 导航文字 = data-nav 的值就是后台文案表里的 key（tx() 取出来）；
+     · 顺序     = 块在页面里出现的先后（querySelectorAll 天生按文档顺序返回）；
+     · 目标锚点 = 块自己的 id。
+   于是"挪动一块 / 删掉一块 / 新加一块"都不用改这里的代码，导航自动跟着变，
+   顺序**永远**和页面一致（scroll-spy 也用同一份 items 算，两边不可能不同步）。
+   ========================================================================== */
+
+/** 收集要进导航的块（DOM 顺序 = 页面从上到下的顺序） */
+function navBlocks() {
+  return $$('[data-nav]').filter((el) => el && el.id);
+}
+
+/** 导航栏现在是不是"看得见"（窄屏时 CSS 把它 display:none 了） */
+function navVisible() {
+  const nav = $('#zoneNav');
+  if (!nav || !navBlocks().length) return false;
+  return getComputedStyle(nav).display !== 'none';
+}
+
+/** 点导航 / 顶部标签跳过去时要留出的高度：吸顶导航栏 + 一点呼吸（不然标题贴着屏幕边）
+ *  ★ 2026-10-16（手机端改造）：手机上挡在正文上面的**不止**顶部导航那一条了 ——
+ *    芯片条（#zoneNav）改成了吸顶（CSS 里 position: sticky; top: 60px），
+ *    它自己也有 30~40px 高。跳转时只减顶部导航的高度 ✗ → 目标块的标题正好被芯片条盖住 ✗
+ *    所以这里改成量**两条的真实高度之和** ✓
+ *    · 电脑端：#zoneNav 是 position:fixed（不在文档流里，但高度照样量得出来），
+ *      不过电脑端的 chipBarVisible() 返回 false → 不加它 → 结果和以前**一模一样** ✓
+ *      （这一点很关键：电脑端的跳转落点一个像素都不能变 ✗）
+ *    · 手机端：60（顶部导航）+ 约 38（芯片条）+ 14（呼吸）= 约 112px */
+function navOffset() {
+  const bar = document.querySelector('.nav');
+  const barH = bar ? bar.getBoundingClientRect().height : 60;
+  const chip = chipBarVisible() ? document.getElementById('zoneNav') : null;
+  const chipH = chip ? chip.getBoundingClientRect().height : 0;
+  return Math.round(barH + chipH + 14);
+}
+
+/**
+ * ★ 芯片条现在是不是"吸在顶上的一条"？（只有手机端才是）
+ *
+ * 为什么不能直接看 display：电脑端那个左侧竖列也是 display:block，但它 position:fixed
+ * 贴在正文左边的空地里，**不挡正文** —— 它的高度不该算进跳转偏移里 ✗
+ * 判据取 position:sticky（手机端 CSS 里就是这么写的），一刀切干净：
+ *   · 电脑端 fixed  → false → 不加高度 → 落点和以前一模一样 ✓
+ *   · 手机端 sticky → true  → 加上芯片条高度 ✓
+ * 用 getComputedStyle 现场判，不写死屏幕宽度 —— 以后改断点也不会漏改这里 ✓ */
+function chipBarVisible() {
+  const nav = document.getElementById('zoneNav');
+  if (!nav) return false;
+  const cs = getComputedStyle(nav);
+  return cs.display !== 'none' && cs.position === 'sticky';
+}
+
+function renderNav() {
+  const nav = $('#zoneNav');
+  const list = $('#zoneNavList');
+  if (!nav || !list) return;
+  $('#zoneNavTitle').textContent = tx('navZoneTitle', '本页内容');
+
+  const blocks = navBlocks();
+  // ⚠️ 服务制分区没有时间表那一块：它是 hidden 的，但 hidden 的块**照样会被
+  //    querySelectorAll 选到**。所以"缺哪块就少哪一项"必须在这里用 hidden 过滤掉 ——
+  //    否则服务制分区的导航里会多出一个点了没反应的「预约」。
+  const shown = blocks.filter((el) => !el.hidden);
+  list.innerHTML = shown.map((el) => `
+    <a class="zone-nav-item" href="#${escapeHtml(el.id)}"
+       data-nav-target="${escapeHtml(el.id)}">${escapeHtml(tx(el.dataset.nav, el.dataset.nav))}</a>`).join('');
+  nav.hidden = !shown.length;
+  updateActiveNav();
+}
+
+/** 滚到某一页块：平滑滚动 + 留出吸顶导航的高度（不然目标会被顶栏挡住） */
+function scrollToNavBlock(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - navOffset()));
+  window.scrollTo({ top, behavior: 'smooth' });
+}
+
+/**
+ * ★ scroll-spy：按**同一份 DOM 顺序**算出"现在读到哪一块了"，给导航项加 .active。
+ *   · 判据：块顶已经越过"吸顶导航下沿"的那些里，最靠下的那一个就是当前块；
+ *   · 都没越过 → 高亮第一项（客户在首屏，还没进第一块）；
+ *   · 滚到页面最底部 → 高亮最后一块（最后一块可能永远越不过那条线，得单独判）。
+ */
+function updateActiveNav() {
+  const list = $('#zoneNavList');
+  if (!list || !navVisible()) return;
+  const blocks = navBlocks().filter((el) => !el.hidden);
+  if (!blocks.length) return;
+  const line = navOffset() + 8;
+  // 文档坐标（滚动时不会变），用它比"越过线没有"最稳
+  const tops = blocks.map((el) => el.getBoundingClientRect().top + window.scrollY);
+  let idx = 0;
+  for (let i = 0; i < tops.length; i++) {
+    if (tops[i] - window.scrollY <= line) idx = i;
+  }
+  const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+  if (atBottom) idx = blocks.length - 1;
+  $$('#zoneNavList .zone-nav-item').forEach((a, i) => a.classList.toggle('active', i === idx));
+}
+
+function bindNav() {
+  const nav = $('#zoneNav');
+  const list = $('#zoneNavList');
+  if (!nav || !list) return;
+  // ① 点击：平滑滚动到那一块（并且立刻把高亮切过去，别等滚动结束才反应）
+  list.addEventListener('click', (e) => {
+    const a = e.target.closest('.zone-nav-item');
+    if (!a) return;
+    e.preventDefault();
+    const id = a.dataset.navTarget || (a.getAttribute('href') || '').slice(1);
+    $$('#zoneNavList .zone-nav-item').forEach((x) => x.classList.toggle('active', x === a));
+    scrollToNavBlock(id);
+  });
+  // ② 滚动：高亮"当前读到哪一块"（rAF 节流，滚动时不做多余计算）
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { ticking = false; updateActiveNav(); });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  // ③ 窗口尺寸变了：导航可能"出现 / 消失"，重画一次（也顺手对齐高亮）
+  window.addEventListener('resize', () => {
+    list.querySelectorAll('.zone-nav-item').forEach((a) => a.classList.remove('active'));
+    updateActiveNav();
+  });
+  updateActiveNav();
+}
+
+/* ==========================================================================
+   ★ 档位卡下面的小圆点（2026-10-16 手机端改造）
+   --------------------------------------------------------------------------
+   手机上三张档位卡从"竖着排"改成"横向可滑、滑一下正好停一张"（CSS 里的 scroll-snap）。
+   但光靠右边露出来的那条边，客户不一定知道一共几张 —— 圆点负责把这件事说清楚。
+
+   ★ 两条和导航一样的铁律：
+     · **圆点绝不手写**：数量 = #priceCards 里真实的卡片数（后台加一档，圆点自己多一个）；
+     · 只剩 1 张卡时**一个圆点都不显示**（CSS 里 .cards > .card:only-child 让卡片铺满）。
+   ⚠️ 圆点只在手机上显示（CSS 里 @media (min-width:1360px) 之外才 display:flex），
+      电脑端那一排三张本来就一眼看全，不需要圆点 ✗
+   ========================================================================== */
+
+/** 档位卡的滑动容器（就是 #priceCards 自己，mobile 下 CSS 把它变成横向滚动条） */
+function priceScroller() { return $('#priceCards'); }
+
+function renderPriceDots() {
+  const box = $('#priceDots');
+  const scroller = priceScroller();
+  if (!box || !scroller) return;
+  const cards = $$('#priceCards > .card');
+  // 一张卡（或空状态）时不显示圆点 —— 下面是空盒子，CSS 也不给它占位
+  box.innerHTML = cards.length < 2 ? '' : cards.map((card, i) => {
+    // 圆点上的说明文字来自文案表：后台「文案 → 分区页」能改，
+    // {n} = 第几张，{name} = 这一档叫什么（取卡片里的 h3）
+    const name = (card.querySelector('h3') || {}).textContent || '';
+    const label = tx('priceDotLabel', '第 {n} 张：{name}', { n: i + 1, name: name.trim() });
+    return `<button type="button" class="price-dot" data-dot="${i}"
+      aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"></button>`;
+  }).join('');
+  updateActiveDot();
+}
+
+/** 把"现在滑到第几张"同步到圆点（高亮那一个） */
+function updateActiveDot() {
+  const box = $('#priceDots');
+  const scroller = priceScroller();
+  if (!box || !scroller) return;
+  const cards = $$('#priceCards > .card');
+  if (cards.length < 2) { box.hidden = true; return; }
+  // 判据：卡片的左边缘离"容器的左内边距"最近的那一张，就是当前这张
+  //（用真实测量的位置，不靠 index 猜 —— 手指滑到哪算哪 ✓）
+  const base = scroller.getBoundingClientRect().left;
+  let idx = 0;
+  let best = Infinity;
+  cards.forEach((card, i) => {
+    const d = Math.abs(card.getBoundingClientRect().left - base);
+    if (d < best) { best = d; idx = i; }
+  });
+  $$('#priceDots .price-dot').forEach((b, i) => b.classList.toggle('active', i === idx));
+}
+
+function bindPriceDots() {
+  const box = $('#priceDots');
+  const scroller = priceScroller();
+  if (!box || !scroller) return;
+  // ① 滑动时跟着变（rAF 节流，滚动过程中不做多余计算）
+  let ticking = false;
+  scroller.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { ticking = false; updateActiveDot(); });
+  }, { passive: true });
+  // ② 点圆点也能切到那一张（可选功能，做了更顺手）
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('.price-dot');
+    if (!b) return;
+    const card = $$('#priceCards > .card')[Number(b.dataset.dot)];
+    if (!card) return;
+    // ★ 这里只滚**容器自己**（scrollLeft），绝不碰 window.scrollTo ✗
+    //   否则客户点一下圆点，整页会跳到别处去
+    scroller.scrollTo({ left: scroller.scrollLeft + (card.getBoundingClientRect().left - scroller.getBoundingClientRect().left), behavior: 'smooth' });
+  });
+  // ③ 窗口尺寸变了（横屏 / 拉宽）：卡片宽度变了，当前是第几张得重算
+  window.addEventListener('resize', () => updateActiveDot());
 }
 
 /* ---------- 时间表（只有预约制分区会跑到这里） ---------- */
@@ -846,14 +1161,15 @@ async function loadPublic(showToast = false) {
   renderTexts();       // ★ 文案先铺一遍，下面各块再用（顺序无所谓，但先铺更直观）
   renderHero();
   renderPrices();
-  renderSteps();       // ★ 服务流程（主人可能在后台刚改过，重画一遍）
-  renderFaq();         // ★ 常见问题（同上）
+  renderSteps();       // ★ 服务流程（档位卡下面，折叠块）
+  renderFaq();         // ★ 常见问题（独立的 section，排在预约后面）
   renderPromises();
   if (isBooking()) {
     renderSchedule();
     renderSelection();
   }
   renderGallery();
+  renderNav();         // ★ 左侧导航：块都画完了再收集，免得漏掉刚显示出来的那一块
   if (showToast) toast('时间表已刷新');
 }
 
@@ -966,6 +1282,10 @@ function bindEvents() {
     });
   }
 
+  // ★ 档位卡的小圆点：绑定和"有没有卡"无关（#priceDots 这个盒子永远在），
+  //   服务制分区那一路 #priceCards 是空的 → renderPriceDots 早退，圆点一个都不出现 ✓
+  bindPriceDots();
+
   $('#galleryFilters').addEventListener('click', (e) => {
     const btn = e.target.closest('.filter');
     if (!btn) return;
@@ -1012,14 +1332,16 @@ function bindEvents() {
 /* ---------- 启动 ---------- */
 (async function main() {
   bindEvents();
+  bindNav();           // ★ 左侧导航（只在宽屏上看得见；窄屏是隐藏的，绑了也不碍事）
   renderTabs();
   renderTexts();       // ★ 文案（默认值 + 后台改过的）先铺一遍
   renderHero();
   renderPrices();
-  renderSteps();       // ★ 服务流程（价目表那一块里，紧跟价格）
-  renderFaq();         // ★ 常见问题（价目表下面 —— 客户正犹豫的地方）
+  renderSteps();       // ★ 服务流程（档位卡那一块里，紧跟价格，默认收起）
+  renderFaq();         // ★ 常见问题（独立的一块 —— 预约后面、展示墙前面）
   renderPromises();
   renderGallery();
+  renderNav();
   try {
     await loadPublic();
   } catch (err) {

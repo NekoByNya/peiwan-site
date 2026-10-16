@@ -142,9 +142,22 @@ def first_zone_id():
 SITE_JS = open(os.path.join(ROOT, "static", "site.js"), encoding="utf-8").read()
 ZONE_JS = open(os.path.join(ROOT, "static", "zone.js"), encoding="utf-8").read()
 ADMIN_JS = open(os.path.join(ROOT, "static", "admin.js"), encoding="utf-8").read()
+STYLE_CSS = open(os.path.join(ROOT, "static", "style.css"), encoding="utf-8").read()
 INDEX_HTML = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
 ZONE_HTML = open(os.path.join(ROOT, "templates", "zone.html"), encoding="utf-8").read()
 ADMIN_HTML = open(os.path.join(ROOT, "templates", "admin.html"), encoding="utf-8").read()
+
+# ⚠️ 结构断言必须先把 HTML 注释去掉再找 —— 注释里会提到 id 和 data-nav 的名字
+#    （例如 zone.html 顶部那段说明"谁带了 data-nav 就进导航"），
+#    带着注释找下标就会把注释当成真实结构（第一版就是这样，断言当场报了）。
+ZONE_HTML_NOCOMMENT = re.sub(r"<!--.*?-->", "", ZONE_HTML, flags=re.S)
+
+
+def _pos(snippet):
+    """片段在 zone.html（去掉注释后）里的下标；找不到就直接炸 —— 说明结构被改动了"""
+    found = ZONE_HTML_NOCOMMENT.find(snippet)
+    assert found >= 0, "zone.html 里找不到 %s" % snippet
+    return found
 
 # ============================================================================
 #  0. 登录
@@ -219,19 +232,33 @@ check("分区页 HTML 里没有残留的 {{ 占位符（漏渲染的模板标记
       "{{" not in zone_html)
 
 # ============================================================================
-#  3. ★ 前台位置：分区页 FAQ 在价目表下面、流程在上面
+#  3. ★ 前台位置（2026-10-16 重排过：档位 → 流程 → 须知 → 预约 → 问答 → 展示）
 # ============================================================================
-print("\n=== 3. ★ 前台位置（分区页：流程在上、FAQ 在下） ===")
-# FAQ 和流程都写在 templates/zone.html 的「价格区」那一个 section 里
-price_sec = ZONE_HTML[ZONE_HTML.find('id="services"'):ZONE_HTML.find('id="schedule"')]
-check("★ 分区页：stepsPanel 在价格区里（= 价目表那一块，排在价格的下面）",
+print("\n=== 3. ★ 前台位置（分区页：流程在档位卡下面、须知在预约前、问答在预约后） ===")
+# ⚠️ 这一段以前守的是"FAQ 和流程都挤在『价格区』那一个 section 里、FAQ 在流程后面"。
+#    2026-10-16 主人把顺序重排了（下完单才看到规则是本末倒置 ✗），所以断言跟着改：
+#      · 流程：还在价格区里（档位卡下面）；
+#      · 常见问题：**搬出去成了独立的 <section id="faq">**，排在预约后面；
+#      · 须知（promises）：搬到预约**前面**。
+#    改动见 docs\交接说明.md 的坑 60。
+price_sec = ZONE_HTML_NOCOMMENT[_pos('id="services"'):_pos('id="faq"')]
+check("★ 分区页：stepsPanel 在价格区里（档位卡那一块，排在价格后面）",
       'id="stepsPanel"' in price_sec)
-check("★ 分区页：faqPanel 也在价格区里，而且排在 stepsPanel **后面**（价目表下面）",
-      price_sec.find('id="faqPanel"') > price_sec.find('id="stepsPanel"') > 0,
-      "steps@%d faq@%d" % (price_sec.find('id="stepsPanel"'), price_sec.find('id="faqPanel"')))
-check("★ 分区页：整块价格区的结尾就是 FAQ 的结尾（所以 FAQ 紧跟在价目表后面）",
-      price_sec.rstrip().endswith("</div>\n</section>".replace("\n", "\n").strip())
-      or 'id="faqList"' in price_sec, "价格区里最后出现的是 FAQ")
+check("★ 分区页：价格区里【已经没有】faqPanel 了（它搬成了独立一块）",
+      'id="faqPanel"' not in price_sec, "价格区里不该再有 FAQ")
+check("★ 分区页：常见问题是独立的一块 <section id=faq>（不再寄生在价格区里）",
+      '<section class="section" id="faq"' in ZONE_HTML_NOCOMMENT)
+_order = {k: _pos(v) for k, v in {
+    "档位": 'id="services"', "流程": 'id="stepsPanel"', "须知": 'id="promises"',
+    "预约": 'id="schedule"', "问答": 'id="faq"', "展示": 'id="gallery"',
+}.items()}
+check("★ 顺序：档位 → 流程 → 须知 → 预约 → 问答 → 展示",
+      _order["档位"] < _order["流程"] < _order["须知"] < _order["预约"]
+      < _order["问答"] < _order["展示"], str(_order))
+# ★ 两块内容只是**搬家**，渲染逻辑不许重写：老函数名和老结构都还在
+check("★ 两块只是搬家：renderSteps / renderFaq 还在，条目渲染还是老写法",
+      'function renderSteps()' in ZONE_JS and 'function renderFaq()' in ZONE_JS
+      and 'class="promises steps-list"' in ZONE_HTML and 'id="faqList"' in ZONE_HTML)
 check("★ 主页【故意既没有 FAQ 也没有流程】（2026-10-15 主人拍的）："
       "问答和流程都是针对具体服务的，客户在主页还没选服务，提前看一整套太多余",
       'id="faqPanel"' not in INDEX_HTML and 'id="stepsPanel"' not in INDEX_HTML
@@ -240,6 +267,116 @@ check("★ 主页【故意既没有 FAQ 也没有流程】（2026-10-15 主人�
 check("★ 两块都只在分区页里有（那儿才是对的时机：客户正看着那个服务的价目）",
       'id="faqPanel"' in ZONE_HTML and 'id="stepsPanel"' in ZONE_HTML
       and 'renderFaq' in ZONE_JS and 'renderSteps' in ZONE_JS)
+
+# ============================================================================
+#  3b. ★★ 左侧固定导航（2026-10-16 新加）
+#     主人专门强调的一条："导航项不许手写列表" —— 页面顺序是 A,B,C,D，
+#     导航就得是 A,B,C,D。所以它是按 DOM 顺序现场生成的，这里用源码断言守住。
+# ============================================================================
+print("\n=== 3b. ★★ 左侧导航（按块顺序自动生成，不许手写列表） ===")
+# ① 六个块各自带了 data-nav（谁带谁进导航），首屏和页脚故意不带
+_nav_blocks = re.findall(r'data-nav="([A-Za-z0-9_]+)"', ZONE_HTML_NOCOMMENT)
+check("★ 六个块都打了 data-nav（值就是后台文案表里的 key）",
+      _nav_blocks == ["navZonePrice", "navZoneSteps", "navZonePromises",
+                      "navZoneSchedule", "navZoneFaq", "navZoneGallery"],
+      str(_nav_blocks))
+check("★ data-nav 的先后顺序 == 页面上块的先后顺序（同一个字符串里数出来的）",
+      [_pos('data-nav="%s"' % k) for k in _nav_blocks]
+      == sorted(_pos('data-nav="%s"' % k) for k in _nav_blocks))
+check("★ 首屏和页脚【不进导航】（它们没有 data-nav）",
+      'data-nav' not in ZONE_HTML_NOCOMMENT[_pos('id="zoneHero"'):_pos('id="services"')]
+      and 'data-nav' not in ZONE_HTML_NOCOMMENT[_pos('class="footer"'):])
+# ② 导航项是**收集**出来的，不是写死的列表
+check("★★ 导航项由 JS 按 DOM 顺序收集（querySelectorAll('[data-nav]')），没有手写数组",
+      "$$('[data-nav]')" in ZONE_JS and 'navBlocks' in ZONE_JS)
+check("★★ 没有『写死的导航项列表』这种东西（HTML 里那个 #zoneNavList 是空盒子）",
+      'id="zoneNavList"></div>' in ZONE_HTML,
+      "导航项必须全部由 JS 生成")
+check("★ 导航项的文字来自文案表（改后台导航词，导航跟着变）",
+      "tx(el.dataset.nav" in ZONE_JS)
+check("★ 服务制分区没有时间表那一块 → 导航里也不该出现「预约」"
+      "（hidden 的块照样会被选到，所以 renderNav 里按 hidden 过滤了）",
+      ".filter((el) => !el.hidden)" in ZONE_JS)
+# ③ 位置与"不挤压正文"：断点 1440 + body 只让出左边距
+# ★ 2026-10-16 断点从 1440 降到 1360：导航宽度改成自适应后（最小 104px），
+#   1366 的小笔记本也放得下了 ✓（原来放不下只能整条隐藏 ✗）
+check("★ 导航只在够宽时出现（@media (min-width: 1360px)），窄屏 display:none 一个字不占",
+      "@media (min-width: 1360px)" in STYLE_CSS and ".zone-nav {" in STYLE_CSS
+      and "display: none;" in STYLE_CSS[STYLE_CSS.find(".zone-nav {"):][:120])
+check("★ 导航宽度自适应（clamp 104~148px）：屏幕窄了自动收窄，不硬塞也不整条消失",
+      "width: clamp(104px, calc((100vw - 1080px) / 2 - 32px), 148px);" in STYLE_CSS)
+check("★ 导航字号 15px（主人说 13.5px 太小，2026-10-16 调大）",
+      "font-size: 15px; line-height: 1.4; color: var(--muted);" in STYLE_CSS)
+# ★★ 这一条 2026-10-16 改过判据（原来的写法是错的 ✗）：
+#    原来断言的是 "宽屏时给 body 加 padding-left:192px" ✗
+#    但那个做法会让【整页正文右移 96px】✗（正文是 max-width 居中的，
+#    可用宽度少 192px → 居中点就右移 96px ✓）—— 实测 1920/1600/1440 三档都偏移 96px ✗
+#    正确做法：导航栏【纯粹待在正文左边的留白里】✓ 正文的宽度和位置一点不动 ✓
+check("★ 正文一点没被挤动：宽屏时【不给 body 加内边距】✗，正文容器的 width / margin:auto 原样",
+      "body { padding-left" not in STYLE_CSS
+      and ".container { width: min(1080px, 100% - 32px); margin: 0 auto; }" in STYLE_CSS)
+# ★ 2026-10-16 改：左边距从"写死 16px"改成"跟着正文走" ✗
+#   写死 16px 时，屏幕越宽导航离正文越远 —— 2560px 屏上离了 576px，
+#   看着像孤零零挂在屏幕角上 ✗。改成 left = 正文左边 − 自身宽 − 16px ✓
+check("★ 导航左边距跟着正文走（永远隔 16px，不会在宽屏上漂远）",
+      "left: calc(max(16px, (100vw - 1080px) / 2) - var(--nav-w) - 16px);" in STYLE_CSS
+      and "--nav-w: clamp(" in STYLE_CSS,
+      "2560px 屏：导航右边缘 724，正文 740 → 隔 16px ✓")
+check("★ 跳转要留出吸顶导航的高度（不然目标被顶栏挡住）：scroll-margin-top",
+      "[data-nav] { scroll-margin-top: 78px; }" in STYLE_CSS
+      and "navOffset()" in ZONE_JS and "scroll-margin-top" in STYLE_CSS)
+check("★ scroll-spy 用同一份块顺序算（不会和页面顺序不同步）",
+      "updateActiveNav" in ZONE_JS and "zone-nav-item.active" in STYLE_CSS
+      and ".zone-nav-item.active" in STYLE_CSS)
+
+# ============================================================================
+#  3c. ★ 两个摘要行（自动拼 + 可覆盖），2026-10-16 新加
+# ============================================================================
+print("\n=== 3c. ★ 折叠块的摘要行（步骤名 / 条目名自动拼，留空=自动） ===")
+check("★ 「怎么开始」是原生 <details>，摘要行 = 标题 + 自动拼的步骤名",
+      "<details class=\"panel steps-panel\" id=\"stepsPanel\"" in ZONE_HTML
+      and 'id="stepsSummary"' in ZONE_HTML)
+check("★ 「下单前须知」也是原生 <details>（默认收起）",
+      "<details class=\"panel promise-panel\" id=\"promisePanel\"" in ZONE_HTML
+      and 'id="promisesSummary"' in ZONE_HTML)
+check("★★ 摘要行是**自动拼**出来的：名字直接来自 steps / promises 的数据",
+      "function autoSummary(" in ZONE_JS and "stepsSummaryText" in ZONE_JS
+      and "promisesSummaryText" in ZONE_JS
+      and "(s.items || []).map((it) => it.title)" in ZONE_JS)
+check("★ 摘要行有【条数上限】和【字数预算】（免得摘要比正文还长）",
+      "maxShow = 5" in ZONE_JS and "budget = 40" in ZONE_JS
+      and "used + n.length > budget" in ZONE_JS and "more ? ' …'" in ZONE_JS)
+# ★ 2026-10-16 补的三条（截图里发现的问题：须知那几条是整句话，直接拼出来占了两行 ✗）
+check("★ 长句会被截成短名字（≤14 字原样用；>14 字在第一个标点处断开）",
+      "function shortenName(" in ZONE_JS and "limit = 14" in ZONE_JS
+      and "search(/[" in ZONE_JS and "。；！？，、,;!?]" in ZONE_JS)
+check("★ 短标题一个字都不动（步骤名走「≤14 字原样用」那条路）",
+      "if (s.length <= limit) return s;" in ZONE_JS)
+check("★ 只有标点的垃圾条目会被丢掉（数据里真出现过一条「、」✗）",
+      "filter((t) => t &&" in ZONE_JS and "[^" in ZONE_JS and "s·、，,;；" in ZONE_JS)
+check("★ 两个键都能被后台覆盖（填了就听主人的，留空才自动拼）",
+      "panelTip('stepsSummary'" in ZONE_JS and "panelTip('promisesSummary'" in ZONE_JS
+      and "tx(key, '') || auto" in ZONE_JS)
+check("★ 折叠块没有 open 属性 → 默认收起（流程 / 须知都一样）",
+      'id="stepsPanel" data-nav="navZoneSteps" hidden>' in ZONE_HTML_NOCOMMENT
+      and 'id="promisePanel">' in ZONE_HTML_NOCOMMENT)
+# 6 个导航词 + 2 个摘要覆盖键 + 导航栏标题，都能在后台改
+s, adm = jcall("/api/admin")
+_texts = {f["key"]: f for g in (adm.get("textGroups") or []) for f in g["fields"]}
+_want = {"navZoneTitle": "本页内容", "navZonePrice": "档位", "navZoneSteps": "流程",
+         "navZonePromises": "须知", "navZoneSchedule": "预约", "navZoneFaq": "问答",
+         "navZoneGallery": "展示"}
+check("★ 6 个导航词 + 导航栏标题都在文案目录里（后台能改）",
+      all(_texts.get(k, {}).get("default") == v for k, v in _want.items()),
+      str([k for k, v in _want.items() if _texts.get(k, {}).get("default") != v]))
+check("★ 两个摘要覆盖键默认留空（留空 = 自动拼；后台那格显示灰色提示）",
+      _texts.get("stepsSummary", {}).get("default") == ""
+      and _texts.get("promisesSummary", {}).get("default") == ""
+      and "留空" in str(_texts.get("stepsSummary", {}).get("placeholder")),
+      str(_texts.get("stepsSummary", {}).get("placeholder")))
+check("★ 「常见问题整块要不要也折叠」也有一个键（faqPanelSummary，留空 = 不折叠）",
+      _texts.get("faqPanelSummary", {}).get("default") == ""
+      and "faqPanelSummary" in ZONE_JS)
 
 # ============================================================================
 #  4. 折叠块（不是独立页面）+ 纯文本

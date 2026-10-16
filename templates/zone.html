@@ -23,6 +23,23 @@
 <!-- data-kind 由 zone.js 按分区类型改写：booking=有时间表 / service=没有时间表 -->
 <body data-mode="zone" data-kind="booking">
 
+<!-- ============ ★ 左侧固定导航栏（只在分区页、只在宽屏上出现） ============
+     位置和"不许挤压正文"是怎么做到的（见 style.css 里 .zone-nav 那一段的说明）：
+       · position: fixed 贴屏幕左边，滚动时不动；
+       · 屏幕 ≥1440px 时给 body 让出左边距（= 它占的是**正文左边的空地**），
+         所以 .container 的宽度 / 左边距 / 居中位置一点都没变；
+       · 窄屏（<1440px）整条 display:none，一个字都不占。
+
+     ★★ 导航项**不是手写的**：下面这个 <nav> 只是一个空盒子，
+        zone.js 按页面上真实出现的块顺序（谁带 data-nav 谁就进导航）现场生成。
+        这一条是主人专门点名的：以后挪块 / 加块 / 删块，导航顺序自动跟着变，
+        绝不会出现"页面顺序 A,B,C,D 而导航写成 A,C,D,B"。
+        页面首屏和页脚**故意不打 data-nav** —— 所以它们不进导航。 -->
+<nav class="zone-nav" id="zoneNav" aria-label="本页内容导航">
+  <p class="zone-nav-title" id="zoneNavTitle">本页内容</p>
+  <div class="zone-nav-list" id="zoneNavList"></div>
+</nav>
+
 <!-- ============ 顶部导航：按大类分组的标签 ============ -->
 <header class="nav">
   <div class="container nav-inner">
@@ -60,8 +77,13 @@
   </div>
 </section>
 
-<!-- ============ 价格区 ============ -->
-<section class="section" id="services">
+<!-- ============ 价格区（档位卡 + 服务流程） ============
+     ★ 顺序（2026-10-16 主人定的）：档位 → 流程 → 须知 → 预约 → 问答 → 展示。
+       常见问题**已经搬出去了**（它现在是独立的 <section id="faq">，排在预约后面），
+       这里只剩"多少钱"和"要走几步"这两块。
+     ★ data-nav = "这一块要进左侧导航"（值就是后台文案表里那个 key），
+       块进导航的顺序**只由它在页面里出现的位置决定** —— zone.js 按 DOM 顺序收集。 -->
+<section class="section" id="services" data-nav="navZonePrice">
   <div class="container">
     <!-- A. 预约制分区（陪玩）：三档价格卡片 -->
     <div id="bookingPriceBlock" hidden>
@@ -73,6 +95,19 @@
         <p id="priceHint">明码标价 · 个人直约 · 按实际游玩时间计费</p>
       </div>
       <div class="cards" id="priceCards"></div>
+      <!-- ★ 小圆点指示器（2026-10-16 手机端改造）：
+           只在手机上出现（≥1360px 时 CSS 里 display:none）。
+           三张档位卡在手机上是"横向可滑 + 滑一下正好停一张"，
+           光看露出来的那条边客户不一定知道"还有几张"，圆点负责说清这件事。
+           ★ 圆点**不是手写的**：zone.js 的 renderPriceDots() 按 #priceCards 里
+             真实的卡片数量现场生成 —— 后台把档位从 3 档改成 2 档，圆点自己变成 2 个；
+             只剩 1 档时**一个圆点都不显示**（卡片铺满整行）。
+           ★★ 默认带 hidden ✗ 这一条是**电脑端一个像素都不变**的关键：
+             CSS 里 [hidden]{display:none!important} 是全局规则，
+             所以电脑端这个空盒子**一点都不占高度**（少了它，流程/预约/问答
+             会被整体往下推 26px ✗ —— 实测过，是真的会动）。
+             手机端的媒体查询里用 display:flex !important 专门把它放出来 ✓ -->
+      <div class="price-dots" id="priceDots" role="tablist" aria-label="档位切换" hidden></div>
     </div>
 
     <!-- B. 服务制分区（代肝 / 剪辑 / 设计 / 建站）：主推档位 + 分组价目表 -->
@@ -98,33 +133,43 @@
       </div>
     </div>
 
-    <!-- ★ 服务流程：放在**价目表这一块的上面** —— 先知道"要走几步"，
-         再看"每一步多少钱"，客户不会一上来就被价格砸懵。
-         预约制分区里，它在三档价格下面；服务制分区里，它在分组价目表下面
-         （两种情况都在这一块的最后，位置由这一块的结尾决定）。 -->
-    <div class="panel steps-panel" id="stepsPanel" hidden>
-      <h2 id="stepsTitle">怎么开始</h2>
-      <ol class="promises steps-list" id="stepsList"></ol>
-    </div>
-
-    <!-- ★ 常见问题：放在**价目表那一块的下面**（客户正犹豫的地方）。
-         做成折叠块，每条一个 <details>，点一下展开 —— 不是独立页面。 -->
-    <div class="panel faq-panel" id="faqPanel" hidden>
-      <div class="section-head compact">
-        <div>
-          <h2 id="faqTitle">常见问题</h2>
-        </div>
-        <p id="faqSubtitle"></p>
+    <!-- ★ 服务流程：紧跟在档位卡后面 —— 先知道"要走几步"，再看"每一步多少钱"，
+         客户不会一上来就被价格砸懵。
+         ★★ 2026-10-16 起它是**原生 <details> 折叠块**（默认收起）：
+            摘要行 = 标题 + 自动拼出来的步骤名（"怎么开始   挑时间 → 加微信 → 我确认 → 开始服务"），
+            步骤名来自后台的步骤数据 → 主人改了步骤名，摘要自动跟着变。
+            想自己写摘要：后台「文案 → 分区页」把 stepsSummary 填上（留空就用自动拼的）。
+         ★ 展开后的内容**和以前一模一样**：01/02/03 编号圆圈 + 标题 + 说明，
+           渲染逻辑一个字没改，只是搬进了 <details> 里。 -->
+    <details class="panel steps-panel" id="stepsPanel" data-nav="navZoneSteps" hidden>
+      <summary id="stepsSummaryRow"><span class="panel-title" id="stepsTitle">怎么开始</span><span class="panel-tip" id="stepsSummary"></span></summary>
+      <div class="panel-body">
+        <ol class="promises steps-list" id="stepsList"></ol>
       </div>
-      <div class="faq-list" id="faqList"></div>
-    </div>
+    </details>
+  </div>
+</section>
+
+<!-- ============ 服务承诺（下单前，聊清楚这几件事） ============
+     ★ 2026-10-16 从"预约后面"搬到"预约前面"：客户**下单之前**就该看到规则，
+       下完单才看到是本末倒置（主人点名要改的）。
+     ★ 同样是原生 <details> 折叠块（默认收起），摘要行自动拼那几条的名字
+       （超过 4 条只显示前 3 条 + …；想自己写就填后台的 promisesSummary）。 -->
+<section class="section" id="promises" data-nav="navZonePromises">
+  <div class="container">
+    <details class="panel promise-panel" id="promisePanel">
+      <summary id="promisesSummaryRow"><span class="panel-title" id="promiseTitle">下单前，聊清楚这几件事</span><span class="panel-tip" id="promisesSummary"></span></summary>
+      <div class="panel-body">
+        <ol class="promises" id="promiseList"></ol>
+      </div>
+    </details>
   </div>
 </section>
 
 <!-- ============ 预约时间表（只有预约制分区才显示） ============ -->
-<section class="section" id="schedule" hidden>
+<section class="section" id="schedule" data-nav="navZoneSchedule" hidden>
   <div class="container">
-<    <div class="section-head">
+    <div class="section-head">
       <div>
         <div class="section-no">02 / 空档时间</div>
         <h2 id="scheduleTitle">你的时间，我来配合。</h2>
@@ -170,18 +215,27 @@
   </div>
 </section>
 
-<!-- ============ 服务承诺 ============ -->
-<section class="section" id="promises">
+<!-- ============ 常见问题（★ 独立的 section，2026-10-16 从价格区里搬出来） ============
+     为什么独立：它在页面上的位置是"预约后面、展示墙前面"，
+     而"位置"由它自己这一块决定才说得清（以前挤在价格区里，位置跟着价格区走）。
+     里面每条仍然是原生 <details>（默认收起，不装 JS 也能点开）；
+     整块是否折叠由后台「文案 → 分区页 → faqPanelSummary」决定（见 zone.js 的 renderFaq）。 -->
+<section class="section" id="faq" data-nav="navZoneFaq">
   <div class="container">
-    <div class="panel">
-      <h2 id="promiseTitle">下单前，聊清楚这几件事</h2>
-      <ol class="promises" id="promiseList" style="margin-top:16px"></ol>
+    <div class="faq-panel" id="faqPanel" hidden>
+      <div class="section-head compact">
+        <div>
+          <h2 id="faqTitle">常见问题</h2>
+        </div>
+        <p id="faqSubtitle"></p>
+      </div>
+      <div class="faq-list" id="faqList"></div>
     </div>
   </div>
 </section>
 
 <!-- ============ 展示墙（只显示这个分区的图） ============ -->
-<section class="section" id="gallery">
+<section class="section" id="gallery" data-nav="navZoneGallery">
   <div class="container">
     <div class="section-head">
       <div>

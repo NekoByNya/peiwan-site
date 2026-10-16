@@ -228,6 +228,32 @@ TEXT_GROUPS = [
         {"key": "galleryEmpty", "label": "这个分区还没传展示墙图片时", "default": "这个分区的展示墙还在装修中，先来找我玩一局吧。", "max": 60},
         {"key": "promiseTitleBooking", "label": "「服务承诺」那一段的标题（陪玩类）", "default": "下单前，聊清楚这几件事", "max": 30},
         {"key": "promiseTitleService", "label": "「服务说明」那一段的标题（代肝 / 剪辑类）", "default": "服务说明", "max": 30},
+        # ★ 下面 8 句是 2026-10-16「分区页改造」新加的（客户能在页面上看到的全都进目录）。
+        #   两条规矩不一样，看 label 里写清了：
+        #     · 6 个导航词 = 有默认值（没填过就显示默认那几个字）；
+        #     · 2 个摘要覆盖键 = **默认值是空的**，留空就用前台自动拼的（所以后台那格
+        #       平时是空的，灰字提示写着"自动会拼成什么"）。这也是本目录里**头两个
+        #       默认值为空**的条目 —— test_texts.py 里那条"没改过的时候 value == default"
+        #       对它们照样成立（空 == 空），不用为它们开特例。
+        {"key": "navZoneTitle", "label": "分区页：左侧导航栏上面那行小字", "default": "本页内容", "max": 12},
+        {"key": "navZonePrice", "label": "分区页左侧导航：档位那一块叫什么", "default": "档位", "max": 6},
+        {"key": "navZoneSteps", "label": "分区页左侧导航：服务流程那一块叫什么", "default": "流程", "max": 6},
+        {"key": "navZonePromises", "label": "分区页左侧导航：下单前须知那一块叫什么", "default": "须知", "max": 6},
+        {"key": "navZoneSchedule", "label": "分区页左侧导航：空档时间那一块叫什么（服务制分区没有它，也就不显示）", "default": "预约", "max": 6},
+        {"key": "navZoneFaq", "label": "分区页左侧导航：常见问题那一块叫什么", "default": "问答", "max": 6},
+        {"key": "navZoneGallery", "label": "分区页左侧导航：展示墙那一块叫什么", "default": "展示", "max": 6},
+        # ★ 2026-10-16 手机端改造：档位卡下面的小圆点。
+        #   那句中文是给**读屏软件 / 长按提示**用的（肉眼只看见三个点），
+        #   所以它也算"客户能看到的字"，照样进目录、照样能改 ✓
+        #   {n} = 第几张，{name} = 这一档叫什么（取卡片标题），两个变量都别删掉。
+        {"key": "priceDotLabel", "label": "手机端档位卡下面的小圆点（读屏/长按提示里那句话，{n} = 第几张，{name} = 档位名）",
+         "default": "第 {n} 张：{name}", "max": 40},
+        {"key": "stepsSummary", "label": "「怎么开始」折叠块右边那串字。★ 留空 = 自动拼步骤名（挑时间 / 说需求 · 加我微信 · 我确认 · 开始服务）",
+         "default": "", "max": 60, "placeholder": "留空自动拼：步骤名 · 步骤名 · 步骤名"},
+        {"key": "promisesSummary", "label": "「下单前，聊清楚这几件事」折叠块右边那串字。★ 留空 = 自动拼条目名（超过 4 条只显示前 3 条 + …）",
+         "default": "", "max": 60, "placeholder": "留空自动拼：前几条的名字 · …"},
+        {"key": "faqPanelSummary", "label": "「常见问题」整块要不要也折叠起来（★ 留空 = 不折叠，就是现在这样；填了才折，填的字显示在箭头前面）",
+         "default": "", "max": 40, "placeholder": "留空 = 不折叠"},
     ]},
     {"id": "booking", "name": "③ 下单流程", "hint": "时间表、选模式弹窗、锁定成功弹窗里的话。", "fields": [
         {"key": "scheduleTitle", "label": "时间表那一段的标题", "default": "你的时间，我来配合。", "max": 40},
@@ -4219,6 +4245,10 @@ def text_groups_for_admin():
                 "default": f["default"],
                 "max": TEXT_LIMITS[f["key"]],
                 "multiline": bool(f.get("multiline")),
+                # ★ placeholder：给"默认值是空的"那几句用的（例如 stepsSummary —— 留空
+                #   = 前台自动拼步骤名）。后台把它当输入框里的灰字显示，这样主人一眼就知道
+                #   "不填会变成什么"，而那格本身仍然是空的（留空 = 自动拼才成立）。
+                "placeholder": str(f.get("placeholder") or ""),
                 "value": texts[f["key"]],
                 "custom": texts[f["key"]] != f["default"],   # 这一句主人改过没有
             })

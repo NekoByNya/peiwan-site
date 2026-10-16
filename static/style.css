@@ -63,6 +63,78 @@ img { max-width: 100%; display: block; }
 .nav-links { display: flex; gap: 18px; margin-left: auto; font-size: 13.5px; color: var(--muted); }
 .nav-links a:hover { color: var(--text); }
 
+/* ---------- ★ 左侧固定导航栏（只在分区页出现，而且只在宽屏上） ----------
+   为什么要有它：分区页很长（手机上是 3 屏多），客户想直接跳到"空档时间"只能一路滑。
+   左边这一条把本页的几块列出来，点一下就过去，滚动时还会高亮"你现在读到哪"。
+
+   ★★ 最关键的一条：**不许挤压正文**。
+      做法是"屏幕变宽时，把左边那块原本空着的留白让给它"：
+        · 它自己 position: fixed 贴屏幕左边，滚动时不动；
+        · 宽屏（≥1440px）时给 body 加 padding-left，
+          于是 .container（width: min(1080px, 100% - 32px); margin: 0 auto）
+          的**宽度、左边距、居中位置一个像素都不变** —— 它只是在"剩下的那块"里照旧居中。
+      1440px 屏幕上算一遍：正文居中后左右各空 180px，让出 192px 给导航栏刚好放得下
+      （1440 - 192 = 1248 ≥ 1080 + 32），所以正文一点没被压。
+      ⚠️ 这就是为什么断点是 1440px 而不是 1280px：1280px 屏上正文左右只空 100px，
+         放不下导航栏 —— 硬塞进去必然压缩正文。窄屏（<1440px）整条 display:none，
+         一个字都不占（手机上更是完全看不到它）。
+   ★ 导航项**不是手写的**：见 zone.js 的 renderNav()（按 DOM 顺序生成）。 */
+.zone-nav {
+  display: none;                       /* 默认不存在；够宽才出现 */
+  /* ★ 宽度【自适应】：屏幕越窄它越窄，最小 104px、最大 148px
+     · 1440 及以上 → 148px（原来的样子 ✓）
+     · 1366 的小笔记本 → 约 111px ✓（原来放不下就整条隐藏 ✗ 现在能显示了 ✓）
+     · 再窄（<1360）→ 媒体查询里直接隐藏 ✓ 不硬塞 ✓ */
+  width: clamp(104px, calc((100vw - 1080px) / 2 - 32px), 148px);
+  position: fixed; top: 92px;
+  /* ★ 左边距【跟着正文走】，不贴屏幕最左边 ✗
+     正文左边 = max(16px, (100vw - 1080px) / 2)（和 .container 的居中规则一样）
+     导航左边 = 正文左边 − 自身宽 − 缝 16px
+     → 2560px 屏：导航落在 576px（右边缘 724），正文 740，正好隔 16px ✓
+     → 1920px 屏：导航落在 256px（右边缘 404），正文 420 ✓
+     → 1440px 屏：算出 16px ✓
+     ★ 用 var(--nav-w) 而不是写死 148：因为宽度是自适应的 ✓ 不然窄屏会算歪 ✗ */
+  --nav-w: clamp(104px, calc((100vw - 1080px) / 2 - 32px), 148px);
+  left: calc(max(16px, (100vw - 1080px) / 2) - var(--nav-w) - 16px);
+  z-index: 30;                         /* 比吸顶导航（40）低一层，免得盖住分区标签 */
+}
+.zone-nav-title {
+  margin: 0 0 11px; font-size: 12px; letter-spacing: .16em;
+  color: var(--muted); text-transform: uppercase;
+}
+/* 左边那条竖线：导航项的"轨道"（高亮的那一项会盖上一段主色） */
+.zone-nav-list { display: grid; gap: 2px; border-left: 1px solid var(--line); }
+.zone-nav-item {
+  padding: 8px 0 8px 15px; margin-left: -1px;   /* 压住轨道那 1px，高亮时正好覆盖 */
+  font-size: 15px; line-height: 1.4; color: var(--muted);
+  border-left: 2px solid transparent; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.zone-nav-item:hover { color: var(--text); }
+/* ★ scroll-spy 高亮：客户读到哪一块，哪一项就亮起来（顺序和页面上的一致） */
+.zone-nav-item.active { color: var(--accent); border-left-color: var(--accent); }
+.zone-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+
+
+/* 宽屏：把左侧导航栏请出来。
+   ★★ 这里【绝对不能】给 body 加 padding-left ✗✗
+      我试过一版 body{padding-left:192px}，结果整页正文【右移 96px】✗
+      （正文是 max-width 居中的：可用宽度少 192px → 居中点就右移 96px ✓）
+      要求是正文宽度和位置一点都不能变✗
+      所以正确做法：让导航栏【纯粹待在正文左边的留白里】✓ 不动正文 ✓
+        · 1440px 屏：正文从 x=180 起 → 导航 left:16 + width:148，右边缘 164 ✓ 留 16px 缝 ✓
+        · 1920px 屏：正文从 x=420 起 → 左边更宽松 ✓
+        · 窄于 1440px：正文左边只剩 ≤143px ✗ 放不下 → 导航自动隐藏 ✓（不挤正文 ✓） */
+@media (min-width: 1360px) {
+  .zone-nav { display: block; }
+}
+/* ★ 跳转锚点的落点：吸顶导航有 60px 高，不留出这一段目标就会被顶栏挡住。
+   只给"要进左侧导航的那几块"加，免得动到别处的锚点行为。 */
+[data-nav] { scroll-margin-top: 78px; }
+/* 首屏主按钮指向的 #servicePriceBlock（服务制分区）也算一个落点，一起留出高度 */
+#servicePriceBlock { scroll-margin-top: 78px; }
+
 /* ---------- 自己设的主页背景图（在后台「资料与报价 → 主页图片」上传） ----------
    它会盖在上面 body 自带的默认背景图之上 */
 .site-bg {
@@ -245,11 +317,52 @@ img { max-width: 100%; display: block; }
 .steps-list li b { font-weight: 600; }
 .steps-list li span { display: block; color: var(--muted); font-size: 13.5px; margin-top: 3px; }
 
+/* ---------- ★ 折叠块的"摘要行"（服务流程 / 下单前须知 / 常见问题整块） ----------
+   为什么三块共用一套：它们都是「标题 + 自动拼出来的内容名 + ▾」这一行，
+   长相必须一致，不然客户会以为是三种不同的东西。
+
+   用原生 <details>：客户不装 JS 也能点开，键盘和读屏软件都认。
+   摘要行里的两个 span：
+     · .panel-title = 这一块的标题（后台能改）
+     · .panel-tip   = 内容名（步骤名 / 承诺条目名），由 zone.js 自动拼 —— 主人改了
+                      后台的数据，这一行自动跟着变（不想自动就填后台的 xxxSummary） */
+.panel summary {
+  cursor: pointer; list-style: none;
+  display: flex; gap: 14px; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap;
+}
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after {
+  content: '▾'; color: var(--accent); font-size: 12px; flex: 0 0 auto;
+}
+.panel[open] summary::after { content: '▴'; }
+.panel summary .panel-title { font-size: 17px; font-weight: 600; color: var(--text); }
+.panel summary:hover .panel-title { color: var(--accent); }
+.panel .panel-tip {
+  color: var(--muted); font-size: 13px; min-width: 0;
+  flex: 1 1 auto; text-align: right;
+}
+/* 展开后，正文和摘要行之间留一点呼吸（不然标题和第一条挤在一起）。
+   正文外面那层 <div class="panel-body"> 是一层**普通块级壳**：
+   摘要行要横排就把 flex 写在 summary 自己身上（见上面的 .panel summary），
+   <details> 自己保持默认的块级 —— 这样"收起时正文一行都不占"这件事
+   完全交给浏览器的原生规则，不掺我们自己的布局。 */
+.panel summary + .panel-body { margin-top: 16px; }
+
+/* 「下单前，聊清楚这几件事」：和 .panel 同一个样子（它自己就是 <details class="panel">） */
+.promise-panel { margin-bottom: 18px; }
+
 /* ---------- ★ 常见问题（折叠块） ----------
-   为什么用原生 <details>：客户不装 JS 也能点开，而且键盘 / 读屏软件都认它。
-   不用 JS 手写"点一下展开"的那种 —— 那是白给自己找 bug。 */
+   每条一个原生 <details>（默认收起）；整块要不要再套一层折叠由后台的
+   faqPanelSummary 决定（留空 = 不套，那就是 2026-10-16 之前的样子）。 */
 .faq-panel { margin-top: 22px; }
+/* 整块折叠那一路（主人填了 faqPanelSummary 才有）：外层必须是 details 才有 ▾ */
+.faq-panel-open summary { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+/* 收起时真的不占地方：正文套一层普通的块级 div（见 .panel-body 那段说明） */
+.faq-body { margin-top: 14px; }
 .faq-list { display: grid; gap: 10px; }
+/* 副标题（"点开看答案，没写到的直接微信问我"）：两种状态下都跟在标题附近 */
+.faq-sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
 .faq-item {
   background: var(--panel2); border: 1px solid var(--line);
   border-radius: 11px; padding: 0 16px;
@@ -831,10 +944,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .table-wrap .price-table td:first-child, .table-wrap .price-table td:last-child {
     white-space: normal;
   }
-  /* ★ 文案页在手机上：左右两栏（说明 + 输入框）挤不下，改成上下排 */
-  .text-row { grid-template-columns: 1fr; gap: 6px; }
-  .text-label { padding-top: 0; }
-  .text-default { grid-column: 1; }
+  /* ⚠️ 2026-10-16：原来这里有三条手机端的 .text-row 覆盖，
+     但它们**从来没生效过** ✗ —— `.text-row` 的基础规则在本文件更靠后（986 行），
+     同权重 + 更靠后 = 基础规则赢，覆盖被盖掉了。
+     实测：430px 下输入框还是 50px 宽（只能看两三个汉字）✗
+     现在搬到文件最后那块 @media (max-width: 1359px) 里了 ✓
+     （.text-label / .text-default / .item-detail-field 同理，一起搬走了） */
 }
 
 /* ==========================================================================
@@ -935,15 +1050,195 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .account-cell .button.small { padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
 
 /* 后台「报价」页每个价目项下面那个「详细说明」的框：
-   它比上面那一行输入框重要（客户"多花的钱买到什么"全靠它），所以给它整行宽度。 */
+   它比上面那一行输入框重要（客户"多花的钱买到什么"全靠它），所以给它整行宽度。
+   ★ 2026-10-16：.item-detail-field 的手机端覆盖（grid-column）也搬到文件最后那块了 ——
+     原来那条 @media 写在**这条基础规则前面**，同权重下被这条盖掉，等于没写 ✗
+     `.item-row` 的 `grid-template-columns: 1fr 1fr`（两列）留在上面的 720px 块里：
+     它的基础规则（883 行）**在那之前**，所以那条是有效的 ✓ */
 .item-detail-field { margin: 4px 0 12px; }
 .item-detail-field textarea { min-height: 76px; font-size: 13px; }
-/* 手机上 item-row 会变成两列，详细说明仍然是整行（它本来就是 grid 的下一行） */
-@media (max-width: 720px) {
-  .item-detail-field { grid-column: 1 / -1; }
-}
 
 /* 前台那两个块的标题右边小字（复用 .section-head 的排版，只是不要那么大标题） */
 .section-head.compact { margin-bottom: 14px; align-items: center; }
 .section-head.compact h2 { font-size: 20px; margin: 0; }
 .section-head.compact p { font-size: 13px; }
+
+/* ==========================================================================
+   ★★ 手机端专属改造（2026-10-16）
+   --------------------------------------------------------------------------
+   主人拍板的三件事，**只在手机端生效**，电脑端（≥1360px）一个像素都不动 ✗：
+     ① 左侧竖列导航 → 顶部横向芯片条（就在吸顶导航下面，跟着一起吸住）
+     ② 档位卡 3 张竖排 → 横向可滑（滑动吸附 + 下面三个小圆点）
+     ③ 后台「文案」页那种"标签左 / 输入框右"的格子 → 上下排列
+
+   ★★ 为什么这一整块要写在**文件的最后**（而不是跟在那几条规则后面）✗
+       CSS 的胜负规则是"同权重时，**谁在后面谁赢**"。
+       `.text-row` 的基础规则在第 986 行（那时还没进媒体查询），
+       `.item-detail-field` 的基础规则在第 1050 行 —— 而原来那两条手机端覆盖
+       写在 923~1053 行的 @media 里，比基础规则**更靠前** ✗
+       → 同权重 + 更靠前 = **被基础规则盖掉，根本没生效** ✗✗
+       实测证据：430px 下 .text-row 算出来的还是 "260px 50px"（说明列 260 + 输入框 50），
+       输入框只有 50px 宽、只能看两三个汉字，改都没法改 ✗
+       （这是这一批之前就存在的 bug，不是新引入的 ✓）
+       → 所以：**手机端覆盖必须排在所有基础规则后面**，这里就是文件最后 ✓
+
+   ★ 断点用 1359px：电脑端导航是 @media (min-width: 1360px)，
+     一个 1359、一个 1360，两边**正好不重叠**，同一条宽度不可能同时命中 ✗
+   ========================================================================== */
+@media (max-width: 1359px) {
+  /* ---------- ① 顶部横向芯片条 ----------
+     和电脑端那个左侧竖列**共用同一个 <nav id="zoneNav"> 和同一份 renderNav() 数据**：
+       · DOM 只有一份（zone.js 的 renderNav 只生成一次）；
+       · 电脑端看到的是"竖列"、手机端看到的是"横条"，差别**全在 CSS** ✓
+     这样以后挪块 / 加块 / 改导航词，两端永远同步（不可能出现两套顺序 ✗）。
+     ⚠️ 基础规则里 .zone-nav 是 display:none（窄屏本来整条不显示），
+        这里必须显式改回 block，否则手机上还是看不见 ✗
+
+     ★ 吸顶：top = 顶部导航那条的高度（.nav-inner height: 60px），
+       于是芯片条正好贴在它下面；滚动时两条一起吸住，客户随时能跳 ✓ */
+  .zone-nav {
+    display: block;
+    position: sticky; top: 60px; z-index: 35;   /* 比顶部导航(40)低、比正文高 */
+    width: auto; left: auto;                    /* 取消电脑端那套"贴在正文左边"的定位 */
+    margin: 0;
+    background: rgba(10, 13, 11, .92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  /* 电脑端那行「本页内容」小标题在手机上是多余的（屏幕本来就窄） */
+  .zone-nav-title { display: none; }
+
+  /* 芯片那一行：横向排 + 放不下时**横着滚**（绝不折成两行 ✗ 也绝不溢出屏幕 ✗）
+     ⚠️ overflow-x:auto 必须配合 flex-wrap:nowrap：默认 flex-wrap 是 nowrap ✓，
+        但显式写出来更清楚，也防止以后有人手滑加上 wrap ✗ */
+  .zone-nav-list {
+    display: flex; flex-wrap: nowrap; gap: 7px;
+    overflow-x: auto; overflow-y: hidden;
+    border-left: 0;                             /* 取消电脑端那条竖轨道线 */
+    padding: 7px 16px;                          /* 左右 16 = .container 的外边距，两头对齐 ✓ */
+    -webkit-overflow-scrolling: touch;          /* iOS 上滑起来跟原生一样顺 */
+    scrollbar-width: none;                      /* 手机浏览器不该出现一条横向滚动条 */
+  }
+  .zone-nav-list::-webkit-scrollbar { display: none; }
+
+  /* 一个芯片：圆角 + 细边 + 淡绿底（当前那一项才亮） */
+  .zone-nav-item {
+    flex: 0 0 auto;                             /* 不许被压扁；宽了就让它去滚 */
+    margin: 0; padding: 7px 14px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--panel2);
+    font-size: 13px; line-height: 1.2; white-space: nowrap;
+  }
+  /* ★ 当前所在的那一项：框和字都绿 + 淡淡的绿底（电脑端的高亮是左边那条竖线） */
+  .zone-nav-item.active {
+    color: var(--accent); border-color: var(--accent);
+    background: rgba(var(--accent-rgb), .14);
+    border-left-color: var(--accent);           /* 盖掉电脑端那条 2px 竖线，不留痕迹 */
+    font-weight: 600;
+  }
+
+  /* ---------- ② 档位卡横向可滑 ----------
+     ⚠️⚠️ 只认 #bookingPriceBlock（预约制分区：三角洲那种按小时的三档）✓
+        服务制分区（明日方舟 /z/arknights）的主推档位在 #featuredCards、
+        分组价目表在 #priceGroups —— **一个字都不动** ✗
+        （#priceGroups 的 .price-group 是 <details> 折叠块，跟这里的 .cards 完全是两回事）
+     ⚠️ 别用 .tier 当选择器：价目项上的 .tier 是"档位名"的字段名，不是卡片 ✗ */
+  #bookingPriceBlock .cards {
+    display: flex; flex-wrap: nowrap;
+    gap: 12px;
+    overflow-x: auto; overflow-y: hidden;
+    /* ★ 滑动吸附：滑一下正好停一张（手感跟原生 App 一样）
+       mandatory = 一定停在某一张上，不会停在两张中间的不三不四的地方 */
+    scroll-snap-type: x mandatory;
+    /* ★ 左右各留 16px：和 .container 的外边距对齐。
+       卡片停下来的位置按"容器的 padding 边"算 → 第一张左边缘正好落在 16px ✓
+       不加这个的话第一张会被贴到屏幕最左边（和上面的标题对不齐）✗ */
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* ⚠️ 卡片上不加任何 touchstart / touchmove 手势处理：
+       这一批卡片还不用可点，滑动手感和"点击"不冲突 ✓ */
+  }
+  #bookingPriceBlock .cards::-webkit-scrollbar { display: none; }
+  /* 每张卡约占 78% 宽（剩下的地方正好**露出下一张的一条边** → 客户一看就知道还能往左滑 ✓）
+     ⚠️ 用 flex-basis 百分比而不是 width：width 在 flex 里会被 flex-shrink 压扁 ✗ */
+  #bookingPriceBlock .cards > .card {
+    flex: 0 0 78%;
+    scroll-snap-align: start;
+  }
+  /* 只剩一张卡时：铺满整行（不留那条"还有下一张"的假边），下面的圆点也不显示 ✓ */
+  #bookingPriceBlock .cards > .card:only-child { flex-basis: 100%; }
+
+  /* 小圆点：三个一排，当前那个亮
+     ⚠️ !important 是**必须的**：这个盒子在 HTML 里默认带 hidden（为了电脑端不占高度），
+        而全局那条 [hidden]{display:none!important} 权重带 important ——
+        这里不加 !important 就盖不住它，手机上也看不到圆点 ✗
+     容器上还有 JS 按"几张卡"补的 hidden（只剩 1 张卡时），那一份 hidden 同样会被
+     这条 !important 盖掉 —— 所以只剩 1 张时是靠 renderPriceDots() **不生成**圆点
+     来处理的（盒子里是空的，看着就是没有）✓ */
+  .price-dots {
+    display: flex !important; justify-content: center; align-items: center;
+    gap: 8px; margin-top: 12px;
+  }
+  .price-dot {
+    width: 8px; height: 8px; padding: 0;
+    border: 0; border-radius: 50%;
+    background: var(--line); cursor: pointer;
+    transition: background .15s, transform .15s;
+  }
+  .price-dot.active { background: var(--accent); transform: scale(1.25); }
+
+  /* ---------- ③ 后台：把"标签左 / 输入框右"的格子改成上下排列 ----------
+     ⚠️ 这几条的**基础规则在本文件更靠后的位置**（.text-row 在 986 行、
+        .item-row 在 883 行、.item-detail-field 在 1050 行），
+        所以它们必须放在文件最后这块里才压得住 ✓（这就是上面那段说明的原因） */
+  .text-row { grid-template-columns: 1fr; gap: 6px; }
+  .text-label { padding-top: 0; }
+  .text-default { grid-column: 1; }
+
+  /* 后台「报价」页：价目项那一行 4 列（名称/价格/说明/按钮）在手机上挤成一条，
+     改成两列 + 按钮自己占一行；「详细说明」那个 textarea 必须整行 ✗ */
+  .item-detail-field { grid-column: 1 / -1; }
+}
+
+/* ★ 摘要行（折叠块的标题那一行）：强制【一行】✗
+   为什么加这一段（2026-10-16）：
+     手机上「怎么开始」的摘要文字比较长 → 那一行变成了两行 ✗
+     右边那个 ▼ 箭头就被挤到了第二行 ✗
+     主人看到后问："是不是必须点箭头才能展开？"（因为箭头看起来像个独立按钮 ✗）
+     —— 其实整行都能点 ✓，但视觉上不该让人产生这个错觉 ✓
+   做法：
+     · summary 不换行（flex-wrap: nowrap ✓）
+     · 中间那段提示文字超出就显示省略号（text-overflow: ellipsis ✓）
+     · 标题和箭头【不许被压缩】（flex: 0 0 auto ✓）→ 永远在两端 ✓ */
+.panel summary { flex-wrap: nowrap; }
+.panel-title { flex: 0 0 auto; }
+.panel-tip {
+  flex: 1 1 auto; min-width: 0;          /* min-width:0 是省略号生效的关键 ✗ 少了它不生效 */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* ============================================================================
+   ★ 手机端：折叠块的摘要行排成【标题+箭头一行、提示文字一行】(2026-10-16)
+   ----------------------------------------------------------------------------
+   起因：主人看到手机上「怎么开始」的 ▼ 箭头掉到了第二行，问
+        "是不是必须点箭头才能展开？"（箭头看着像个独立的小按钮 ✗）
+   我加过一版"强制一行 + 省略号"✗ —— 结果显示不下就只剩 131px（约 9 个字）✗
+   信息丢得太狠 ✗ 于是改成现在这样：
+       第一行： [ 怎么开始 ····················· ▾ ]   ← 标题和箭头，永远在一起 ✓
+       第二行：   挑时间 / 说需求 · 加我微信 · 我确认 · 开始服务   ← 提示完整 ✓
+   桌面端不动 ✗（那边一行放得下 ✓ 见文件前面那条 .panel summary { flex-wrap: nowrap }）
+   ============================================================================ */
+@media (max-width: 1359px) {
+  .panel summary { flex-wrap: wrap; }
+  .panel-tip {
+    /* ★ order:3 是关键 ✗ —— 箭头是 summary 的 ::after（也是个 flex 项，order 默认 0）
+       不加这个，提示文字会排在箭头【前面】✗ 箭头就被挤到第二行左边去了 ✗
+       加上之后顺序变成：标题(0) → 箭头(0) → 提示(3) ✓
+       第一行 = 标题 + 箭头 ✓  第二行 = 提示文字 ✓ 正是想要的样子 ✓ */
+    order: 3;
+    flex: 0 0 100%;          /* 0 0 = 不伸缩，强制占满一整行 → 一定换到第二行 ✓
+                                （用 1 1 100% 会被压缩回第一行 ✗ 我踩过）*/
+    text-align: left;        /* 换行后左对齐更好读 ✓（原来靠右是因为在标题右侧 ✓）*/
+    white-space: normal; overflow: visible; text-overflow: clip;
+  }
+}

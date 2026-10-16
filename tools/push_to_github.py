@@ -8,6 +8,7 @@
 
     # 2. 确认没问题再真推（令牌只从环境变量读）
     set GITHUB_TOKEN=github_pat_xxxxxxxx
+
     python tools\\push_to_github.py --repo 你的用户名/peiwan-site
 
 安全说明：
@@ -19,6 +20,7 @@
 import argparse
 import base64
 import json
+import io
 import os
 import sys
 import urllib.error

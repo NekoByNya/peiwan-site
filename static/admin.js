@@ -2814,9 +2814,9 @@ function renderTexts() {
             ${f.custom ? '<span class="badge mini">已改</span>' : ''}</label>
           ${f.multiline
             ? `<textarea id="tf-${escapeHtml(f.key)}" data-text-key="${escapeHtml(f.key)}"
-                 maxlength="${f.max}">${escapeHtml(f.value)}</textarea>`
+                 maxlength="${f.max}"${f.placeholder ? ` placeholder="${escapeHtml(f.placeholder)}"` : ''}>${escapeHtml(f.value)}</textarea>`
             : `<input id="tf-${escapeHtml(f.key)}" data-text-key="${escapeHtml(f.key)}"
-                 maxlength="${f.max}" value="${escapeHtml(f.value)}">`}
+                 maxlength="${f.max}"${f.placeholder ? ` placeholder="${escapeHtml(f.placeholder)}"` : ''} value="${escapeHtml(f.value)}">`}
           ${f.custom ? `<p class="text-default">默认那句话：<b>${escapeHtml(f.default)}</b></p>` : ''}
         </div>`).join('')}
     </div>`;
