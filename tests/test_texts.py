@@ -382,7 +382,9 @@ check("★ 老备份**不会清空**他改过的文案（一句都不动）",
 print("\n=== 8. ★ 图片显示位置（首页三张 + 分区两张） ===")
 adm = admin_state()
 choices = [c["value"] for c in (adm.get("positionChoices") or [])]
-check("★ 后台拿到了 9 个位置选项（3×3 九宫格）", len(choices) == 9, str(choices))
+# ★ 第六刀之后后台不再画九宫格（改成在图上直接拖），但这份"9 个选项"还留在接口里：
+#   拖动要用它把老关键词翻译成"该从哪儿开始拖"，接口也不该突然少一个字段。
+check("★ 接口仍然带着 9 个位置关键词（拖框用它翻译老值）", len(choices) == 9, str(choices))
 check("★ 默认是 center（= 这一版之前的样子，观感不变）",
       (adm["profile"].get("avatarPosition") == "center"
        and adm["profile"].get("backgroundPosition") == "center"
@@ -464,6 +466,96 @@ if zones:
 
 s, b = jcall("/api/admin/profile", "PUT", {"profile": {}, "revision": 0}, use_cookie=False)
 check("未登录改资料（含图片位置）→ 401", s == 401, "status=%s" % s)
+
+# ============================================================================
+#  8b. ★ 百分比位置（第六刀：九宫格删了，改成"直接在图上拖"）
+# ============================================================================
+#  两条硬要求：
+#    ① 新值（"42% 18%" 这种 CSS object-position）要能存、能读、能下发到前台；
+#    ② 老值（9 个关键词）**一个字节都不能变** —— 主人线上库里现在存的就是它，
+#       升级之后前台渲染必须和以前一模一样，否则他已有的图就错位了。
+print("\n=== 8b. ★ 百分比位置 + 老关键词兼容 ===")
+adm = admin_state()
+profile = dict(adm["profile"])
+profile.update({"avatarPosition": "42% 18%", "backgroundPosition": "0% 100%",
+                "heroImagePosition": "100% 0%"})
+s, b = jcall("/api/admin/profile", "PUT",
+             {"profile": profile, "revision": adm["profileRevision"]})
+check("百分比位置能存进去", s == 200, "status=%s %s" % (s, str(b)[:80]))
+p2 = admin_state().get("profile") or {}
+check("★ 读出来还是那个百分比（不被洗掉）",
+      p2.get("avatarPosition") == "42% 18%" and p2.get("backgroundPosition") == "0% 100%",
+      "%s / %s" % (p2.get("avatarPosition"), p2.get("backgroundPosition")))
+pos = ((jcall("/api/public")[1].get("site") or {}).get("imagePositions") or {})
+check("★ 前台拿到的也是百分比（直接塞进 object-position）",
+      pos.get("avatar") == "42% 18%" and pos.get("heroImage") == "100% 0%",
+      str(pos))
+
+# ---- 老关键词：存进去 / 读出来必须**原样**（这是"老数据不能错位"的防线）----
+adm = admin_state()
+OLD_VALUES = ["left top", "center top", "right top", "left center", "center",
+              "right center", "left bottom", "center bottom", "right bottom"]
+profile = dict(adm["profile"])
+profile.update({"avatarPosition": "left top", "backgroundPosition": "center bottom",
+                "heroImagePosition": "right center"})
+jcall("/api/admin/profile", "PUT", {"profile": profile, "revision": adm["profileRevision"]})
+p3 = admin_state().get("profile") or {}
+check("★ 老关键词原样存着（没被转成百分比 —— 前台渲染才会和以前一模一样）",
+      p3.get("avatarPosition") == "left top"
+      and p3.get("backgroundPosition") == "center bottom"
+      and p3.get("heroImagePosition") == "right center",
+      "%s / %s / %s" % (p3.get("avatarPosition"), p3.get("backgroundPosition"),
+                        p3.get("heroImagePosition")))
+pos = ((jcall("/api/public")[1].get("site") or {}).get("imagePositions") or {})
+check("★ 前台拿到的老值还是那个字符串（一个字节没变）",
+      pos.get("avatar") == "left top" and pos.get("background") == "center bottom",
+      str(pos))
+
+# 九个关键词循环一遍，**进什么出什么**（一个都不许被改写）
+bad = []
+for v in OLD_VALUES:
+    adm = admin_state()
+    pr = dict(adm["profile"])
+    pr["avatarPosition"] = v
+    jcall("/api/admin/profile", "PUT", {"profile": pr, "revision": adm["profileRevision"]})
+    got = (admin_state().get("profile") or {}).get("avatarPosition")
+    if got != v:
+        bad.append((v, got))
+check("★ 9 个老关键词全部原样保留（round-trip 一个都没变）", not bad, str(bad))
+
+# 脏值 / 注入：还是必须退回 center（不能带着奇怪的东西进 CSS）
+adm = admin_state()
+pr = dict(adm["profile"])
+pr["avatarPosition"] = "'; background:url(javascript:alert(1))"
+pr["heroImagePosition"] = "42%; color:red"
+jcall("/api/admin/profile", "PUT", {"profile": pr, "revision": adm["profileRevision"]})
+pos = ((jcall("/api/public")[1].get("site") or {}).get("imagePositions") or {})
+check("★ 带分号/括号的脏位置值一律退回 center（挡注入）",
+      pos.get("avatar") == "center" and pos.get("heroImage") == "center", str(pos))
+
+# 越界的百分比会被夹到 0..100（不露白边的取值范围）
+adm = admin_state()
+pr = dict(adm["profile"])
+pr["avatarPosition"] = "999% -50%"
+jcall("/api/admin/profile", "PUT", {"profile": pr, "revision": adm["profileRevision"]})
+got = (admin_state().get("profile") or {}).get("avatarPosition")
+check("★ 越界百分比被夹回 0..100（拖不出白边）", got == "100% 0%", repr(got))
+
+# 备份 / 恢复：百分比也跟着回来
+adm = admin_state()
+pr = dict(adm["profile"])
+pr["avatarPosition"] = "37% 91%"
+jcall("/api/admin/profile", "PUT", {"profile": pr, "revision": adm["profileRevision"]})
+s, raw = call("/api/admin/export")
+bk = json.loads(raw)
+adm = admin_state()
+pr = dict(adm["profile"])
+pr["avatarPosition"] = "center"
+jcall("/api/admin/profile", "PUT", {"profile": pr, "revision": adm["profileRevision"]})
+s, b4 = jcall("/api/admin/import", "POST", {"backup": bk})
+check("★ 备份恢复后百分比位置跟着回来",
+      (b4.get("profile") or {}).get("avatarPosition") == "37% 91%",
+      repr((b4.get("profile") or {}).get("avatarPosition")))
 
 # ============================================================================
 #  9. 收尾：恢复默认，别影响后面的阶段

@@ -62,8 +62,14 @@
   <!-- ---------- 预约与时间（全局：时间表所有分区共用） ---------- -->
   <section data-panel="schedule">
     <!-- ★ 待确认处理台：客户自助预约会立刻锁走时段，但没确认之前都挂在这儿 -->
-    <div class="panel pending-panel" id="pendingPanel">
-      <h2>待确认的预约 <span class="badge warn" id="pendingCount">0 单</span></h2>
+    <!-- ★ 折叠块（第六刀）：默认**展开** —— 这是每天真正要处理的活儿，
+         折起来只会多一次点击，反而碍事。 -->
+    <details class="panel pending-panel" id="pendingPanel" open>
+      <summary class="panel-head">
+        <h2>待确认的预约 <span class="badge warn" id="pendingCount">0 单</span></h2>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">
         客户在前台自助预约时，那几格<b>立刻就被锁走了</b>。加得上微信、谈得拢，就点「已确认」；
         联系不上、或者他放你鸽子，就点「释放时段」把那几个小时还给别人。
@@ -91,7 +97,8 @@
         </p>
         <div id="autoReleasedBox"></div>
       </div>
-    </div>
+      </div>
+    </details>
 
     <div class="notice">
       ⏳ <b>这份时间表是全部服务共用的</b>：客户不管从哪个分区（三角洲 / 守望 / …）进来，
@@ -99,8 +106,13 @@
     </div>
     <div class="stats" id="stats"></div>
 
-    <div class="panel">
-      <h2>每日时间表</h2>
+    <!-- ★ 每日时间表：也是**默认展开**（最常用的那一块） -->
+    <details class="panel" open>
+      <summary class="panel-head">
+        <h2>每日时间表</h2>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">点空闲格 = 锁定预约；开启「多选」可一次锁多格。已有预约不会被休息规则覆盖。</p>
 
       <div class="grid-2" style="align-items:end;margin-bottom:14px">
@@ -151,10 +163,17 @@
 
       <h2 style="margin:22px 0 4px;font-size:15px">这一天已锁定</h2>
       <div class="record-list" id="lockList"></div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>固定休息规则</h2>
+    <!-- ★ 固定休息规则：平时不怎么改，**默认收起** -->
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>固定休息规则</h2>
+        <span class="panel-hint">睡觉 / 上课那几段，按周重复</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">按周重复，可跨午夜（例如 22:00–06:00）。用于每天固定睡觉、上课的时间。</p>
 
       <div class="grid-2">
@@ -189,7 +208,8 @@
       </div>
 
       <div class="record-list" id="ruleList"></div>
-    </div>
+      </div>
+    </details>
   </section>
 
   <!-- ---------- ★ 客户（客户档案 + 到期提醒，独立标签页） ---------- -->
@@ -318,8 +338,13 @@
     </div>
 
     <div id="zoneEditBlock">
-    <div class="panel">
-      <h2>分区内容</h2>
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>分区内容</h2>
+        <span class="panel-hint">游戏名、标语、大标题、介绍、亮点、公告</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub" id="zoneContentHint">游戏名、标语、首屏大标题、详细介绍、服务亮点、公告、平台。</p>
       <div class="grid-2">
         <div class="field"><label for="zGame">游戏名 / 服务名</label><input id="zGame" maxlength="30" placeholder="例如：守望先锋 / 视频剪辑"></div>
@@ -333,17 +358,24 @@
       <div class="field"><label for="zBio">详细介绍</label><textarea id="zBio" maxlength="1200"></textarea></div>
       <div class="field"><label for="zHighlights">服务亮点 / 打法标签（用中文逗号隔开）</label><input id="zHighlights"></div>
       <div class="field"><label for="zAnnouncement">这个分区的公告（选填）</label><input id="zAnnouncement" maxlength="200"></div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>分区图片</h2>
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>分区图片</h2>
+        <span class="panel-hint">图标 / 背景图 / 首屏图 / 分享图 / 价目表长图</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">
         五个位置都可以留空。选完图片会先自动压缩，<b>再点下面的「保存这个分区」才会生效</b>。
         建议尺寸：分享图 1200×630；首屏图用 PNG 透明底；价目表长图宽度 1000 左右。
       </p>
       <p class="hint" style="margin:-8px 0 14px">
-        📐 「显示位置」是给<b>会被裁掉一部分</b>的图用的：图会被裁掉一部分时，用这个决定保留哪一块。
-        点九宫格里的一格就行（默认「居中」= 以前的样子）。<b>微信分享图</b>不提供这个：
+        📐 「显示位置」是给<b>会被裁掉一部分</b>的图用的：<b>按住下面那个框里的图直接拖</b>，
+        拖到想保留的地方松手就行（预览框和客户看到的画面是同一个比例，所见即所得）。
+        拖歪了按「居中」回到中间。<b>微信分享图</b>不提供这个：
         卡片怎么裁由微信 / QQ 自己决定；<b>价目表长图</b>是整张缩放显示的，不会裁。
       </p>
       <div class="upload-grid">
@@ -358,16 +390,30 @@
           <img class="upload-preview wide" id="zBackgroundPreview" alt="">
           <input type="file" id="zBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="background">清除背景图</button>
-          <label>显示位置（会被裁掉一块，这里决定保留哪块）</label>
-          <div class="pos-picker" id="posZoneBackground"></div>
+          <label>显示位置：按住图直接拖（宽图只能左右拖，高图只能上下拖）</label>
+          <div class="pos-drag" id="posDragZoneBackground" style="aspect-ratio:16/9">
+            <img class="pos-drag-img" id="posImgZoneBackground" alt="" draggable="false">
+          </div>
+          <div class="pos-drag-bar">
+            <button class="button small ghost" type="button" id="posCenterZoneBackground"
+                    data-pos-center="posDragZoneBackground">居中</button>
+            <span class="hint" id="posValueZoneBackground"></span>
+          </div>
         </div>
         <div class="upload-item">
           <label>首屏主视觉（大标题旁边，建议 PNG 透明底）</label>
           <img class="upload-preview" id="zHeroImagePreview" alt="">
           <input type="file" id="zHeroImageFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="heroImage">清除首屏图</button>
-          <label>显示位置（太高或太宽时会被裁，这里决定保留哪块）</label>
-          <div class="pos-picker" id="posZoneHero"></div>
+          <label>显示位置：按住图直接拖（太高或太宽时会被裁）</label>
+          <div class="pos-drag" id="posDragZoneHero" style="aspect-ratio:498/430">
+            <img class="pos-drag-img" id="posImgZoneHero" alt="" draggable="false">
+          </div>
+          <div class="pos-drag-bar">
+            <button class="button small ghost" type="button" id="posCenterZoneHero"
+                    data-pos-center="posDragZoneHero">居中</button>
+            <span class="hint" id="posValueZoneHero"></span>
+          </div>
         </div>
         <div class="upload-item">
           <label>微信分享图（1200×630，转发时显示这张）</label>
@@ -396,13 +442,20 @@
           <input type="range" id="zBackgroundDim" min="0" max="90" step="2" value="72">
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>服务承诺 / 服务说明</h2>
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>服务承诺 / 服务说明</h2>
+        <span class="panel-hint">每行一条，前台显示成编号列表</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">每行一条，会显示成 01 / 02 / 03 编号列表。</p>
       <div class="field"><textarea id="zPromises" style="min-height:140px"></textarea></div>
-    </div>
+      </div>
+    </details>
 
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
       <button class="button primary" id="saveZone">保存这个分区</button>
@@ -413,8 +466,13 @@
     <!-- ============ 🏠 个人主页（只影响首页，不动任何分区） ============ -->
     <div id="homeEditBlock" hidden>
 
-    <div class="panel">
-      <h2>🏠 主页设置（只影响个人主页）</h2>
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>🏠 主页设置（只影响个人主页）</h2>
+        <span class="panel-hint">副标题 / 介绍 / 信任信号 / 头像与首页图</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">下面这些<b>只出现在个人主页</b>上，改它们不会影响任何分区页。</p>
       <div class="grid-2">
         <div class="field"><label for="pTagline">首页副标题（一句话介绍自己）</label><input id="pTagline" maxlength="60"></div>
@@ -429,8 +487,15 @@
           <img class="upload-preview" id="avatarPreview" alt="">
           <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="avatar">清除头像</button>
-          <label>显示位置（不是正方形时会被裁）</label>
-          <div class="pos-picker" id="posAvatar"></div>
+          <label>显示位置：按住图直接拖（不是正方形时会被裁）</label>
+          <div class="pos-drag" id="posDragAvatar" style="aspect-ratio:1/1">
+            <img class="pos-drag-img" id="posImgAvatar" alt="" draggable="false">
+          </div>
+          <div class="pos-drag-bar">
+            <button class="button small ghost" type="button" id="posCenterAvatar"
+                    data-pos-center="posDragAvatar">居中</button>
+            <span class="hint" id="posValueAvatar"></span>
+          </div>
         </div>
         <div class="upload-item">
           <label>微信二维码（选填，放在首页「关于我」下面）</label>
@@ -443,20 +508,35 @@
           <img class="upload-preview wide" id="siteBackgroundPreview" alt="">
           <input type="file" id="siteBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="background">清除首页背景图</button>
-          <label>显示位置（铺满屏幕时会被裁）</label>
-          <div class="pos-picker" id="posHomeBackground"></div>
+          <label>显示位置：按住图直接拖（铺满屏幕时会被裁）</label>
+          <div class="pos-drag" id="posDragHomeBackground" style="aspect-ratio:16/9">
+            <img class="pos-drag-img" id="posImgHomeBackground" alt="" draggable="false">
+          </div>
+          <div class="pos-drag-bar">
+            <button class="button small ghost" type="button" id="posCenterHomeBackground"
+                    data-pos-center="posDragHomeBackground">居中</button>
+            <span class="hint" id="posValueHomeBackground"></span>
+          </div>
         </div>
         <div class="upload-item">
           <label>主页首屏主视觉（选填，放在首页大标题上面；PNG 透明底最好看）</label>
           <img class="upload-preview" id="homeHeroPreview" alt="">
           <input type="file" id="homeHeroFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="heroImage">清除首屏主视觉</button>
-          <label>显示位置（太高时会被裁）</label>
-          <div class="pos-picker" id="posHomeHero"></div>
+          <label>显示位置：按住图直接拖（太高时会被裁）</label>
+          <div class="pos-drag" id="posDragHomeHero" style="aspect-ratio:498/430">
+            <img class="pos-drag-img" id="posImgHomeHero" alt="" draggable="false">
+          </div>
+          <div class="pos-drag-bar">
+            <button class="button small ghost" type="button" id="posCenterHomeHero"
+                    data-pos-center="posDragHomeHero">居中</button>
+            <span class="hint" id="posValueHomeHero"></span>
+          </div>
         </div>
       </div>
       <p class="hint" style="margin:12px 0 0">
-        📐 图会被裁掉一部分时，用上面的九宫格决定保留哪一块（默认「居中」= 以前的样子）。
+        📐 图会被裁掉一部分时，用上面那个框把图拖到想保留的位置（拖歪了按「居中」复位；
+        「居中」= 以前的样子）。
         <b>微信二维码</b>不提供位置控制：它必须完整显示（裁掉一个角就可能扫不出来）。
       </p>
       <div class="field" style="max-width:340px;margin-top:16px">
@@ -464,10 +544,16 @@
         <input type="range" id="pSiteDim" min="0" max="90" step="2" value="72">
       </div>
       <p class="hint" id="uploadState" style="margin-top:12px"></p>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>🌐 全局共用（首页和每个分区页都会用到）</h2>
+    <details class="panel">
+      <summary class="panel-head">
+        <h2>🌐 全局共用（首页和每个分区页都会用到）</h2>
+        <span class="panel-hint">品牌名 / 昵称 / 微信号 / 接单开关</span>
+        <span class="panel-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="panel-body">
       <p class="sub">品牌名显示在每个页面顶部；微信号 / 闲鱼出现在所有页面的「加微信」区域；
       接单开关控制所有分区的时间表。</p>
       <div class="grid-2">
@@ -477,7 +563,8 @@
         <div class="field"><label for="pXianyu">闲鱼链接</label><input id="pXianyu" maxlength="200"></div>
       </div>
       <div class="check-row"><input type="checkbox" id="pAccepting"><label for="pAccepting">开放接单（关掉后，所有分区的空闲时段都会显示为"停接"）</label></div>
-    </div>
+      </div>
+    </details>
 
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
       <button class="button primary" id="saveProfile">保存主页设置</button>
@@ -504,6 +591,16 @@
         （分别会变成你的昵称 / 分区名 / 一次最多几小时），<b>别删掉</b>，不然那句话就和实际规则对不上了；
         ③ 每一行左边的字是"这句话出现在哪"，右边的框才是你要改的内容。
       </p>
+      <!-- ★ 搜索：下面一共 97 个输入框，找一个靠翻是翻不到的。
+           输入关键词 → 只留"标签或内容里含这个词"的句子，命中的组自动展开；
+           清空就回到正常的折叠视图。展开状态会记住（刷新回来还是上次打开的那组）。 -->
+      <div class="text-search">
+        <input id="textSearch" type="search" autocomplete="off"
+               placeholder="搜句子：输入关键词，例如「微信」「时间」"
+               aria-label="搜索文案">
+        <button class="button small ghost" type="button" id="textSearchClear" hidden>清空搜索</button>
+        <span class="hint" id="textSearchState"></span>
+      </div>
       <div id="textGroupList"></div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px">
         <button class="button primary" id="saveTexts">保存文案</button>
@@ -512,9 +609,11 @@
       </div>
     </div>
 
-    <!-- 服务条款：一个标题 + 可增删的小节（每节 = 小标题 + 正文），↑↓ 调顺序 -->
-    <div class="panel">
-      <h2>服务条款（客户点开 /terms 看到的那一页）</h2>
+    <!-- 服务条款：一个标题 + 可增删的小节（每节 = 小标题 + 正文），↑↓ 调顺序
+         ★ 整块折起来（2026-10-16）：这一块自己就占 3000px ✗
+            和上面那几组文案一样，收起后点标题才展开 ✓ -->
+    <details class="panel panel-fold">
+      <summary><h2>服务条款（客户点开 /terms 看到的那一页）</h2></summary>
       <p class="sub">
         这一页是给客户看的"把话说清楚"：服务内容、怎么下单、怎么付钱、取消与改期、
         <b>账号安全</b>、责任范围、怎么找你。默认那份是照"个人接单"的实际情况写的，可以直接用，也可以改成你自己的口气。
@@ -538,13 +637,13 @@
         <button class="button primary" id="saveTerms">保存条款</button>
         <span class="hint" id="termsState"></span>
       </div>
-    </div>
+    </details>
 
     <!-- ★ 常见问题：一个标题 + 可增删的条目（每条 = 问题 + 答案），↑↓ 调顺序。
          为什么放在「文案」页里：它和上面那两块是同一类东西 ——
          "客户能看到的中文，主人自己就能改"，而且写法（增删改排序）和条款完全一样。 -->
-    <div class="panel">
-      <h2>常见问题（客户在预约后面看到的那个折叠块）</h2>
+    <details class="panel panel-fold">
+      <summary><h2>常见问题（客户在预约后面看到的那个折叠块）</h2></summary>
       <p class="sub">
         客户在预约前后犹豫的时候，心里那几个问题（账号安全吗 / 打不完怎么算 / 能退款吗）
         就在这里回答他。分区页里它是<b>预约后面的独立一块</b>（左侧导航里叫「问答」），
@@ -573,11 +672,11 @@
         <button class="button primary" id="saveFaq">保存常见问题</button>
         <span class="hint" id="faqState"></span>
       </div>
-    </div>
+    </details>
 
     <!-- ★ 服务流程：一个标题 + 2~6 步（每步 = 一句话标题 + 一句说明），↑↓ 调顺序 -->
-    <div class="panel">
-      <h2>服务流程（客户从"看到"到"下单"要走几步）</h2>
+    <details class="panel panel-fold">
+      <summary><h2>服务流程（客户从"看到"到"下单"要走几步）</h2></summary>
       <p class="sub">
         客户第一次来最怕的是"我点一下会发生什么"。把几步写清楚，他就知道点完还有人在后面接住。
         分区页里它是<b>档位卡下面那个折叠块</b>（默认收起），
@@ -601,7 +700,7 @@
         <button class="button primary" id="saveSteps">保存服务流程</button>
         <span class="hint" id="stepsState"></span>
       </div>
-    </div>
+    </details>
   </section>
 
   <!-- ==================== 报价（独立标签页） ==================== -->

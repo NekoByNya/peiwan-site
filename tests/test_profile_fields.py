@@ -360,8 +360,15 @@ check("★ 打码的是密码，账号**不打码**（他经常要看着拨号 /
       "账号：" in admin_js and "密码：" in admin_js and "PASSWORD_MASK" in admin_js)
 check("★ 有小眼睛按钮和复制按钮", "data-pw-toggle" in admin_js and "data-pw-copy" in admin_js)
 check("★ 复制走的是原文（不用先显示）", "span.dataset.pw" in admin_js)
-check("★ 显示状态不写进 localStorage（刷新后回到打码）",
-      "localStorage.setItem" not in admin_js and "localStorage.getItem" not in admin_js)
+# ★ 2026-10-16 改过判据（原来写得太宽 ✗ 会误伤）：
+#   原来断言的是"admin.js 里【任何】localStorage 都不许用"✗
+#   但后来加了「文案页折叠状态记忆」✓ 它必须要用 localStorage ✓
+#   真正要守的是：【密码的显示状态】不许持久化 ✓（刷新后必须回到打码 ✓）
+#   所以改成：localStorage 只允许用来记折叠状态 ✓ 不许碰密码那些 key ✓
+_ls_calls = re.findall(r"localStorage\.(?:set|get|remove)Item\(([^)]*)", admin_js)
+check("★ 密码显示状态不写进 localStorage（刷新后回到打码）—— 只允许折叠记忆用",
+      all(("TEXTS_OPEN" in c) or ("textsOpen" in c) for c in _ls_calls),
+      "localStorage 用到 %d 处：%s" % (len(_ls_calls), [c.strip()[:28] for c in _ls_calls]))
 check("★ 密码不进搜索范围（搜不出密码对他没损失，但能免则免）",
       "c.game, c.server, c.account, c.role, c.gameLevel]" in admin_js)
 tpl = open(os.path.join(ROOT, "templates", "admin.html"), encoding="utf-8").read()

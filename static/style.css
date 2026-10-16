@@ -601,6 +601,35 @@ textarea.message {
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
 .panel h2 { margin: 0 0 4px; font-size: 17px; }
 .panel > p.sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+/* 同上，但给"折起来之后正文包了一层 .panel-body"的那些块（第六刀）：
+   它们里面的说明文字隔了一层，`.panel > p.sub` 就选不中了 —— 补这一条，
+   保证折与不折的块，标题下面的间距长得一模一样。 */
+.panel-body > p.sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+
+/* ★ 后台的折叠块（第六刀）：把 .panel 变成 <details>，标题那一行当 <summary>。
+   为什么复用 .panel：后台有几十个块都叫 .panel，改成 <details class="panel"> 之后
+   背景/边框/圆角/间距全都照旧，视觉上一点没变 —— 变的只是"点一下能收起来"。
+   ⚠️ 这里只补"摘要行"和"收起来时的内边距"这几条：
+      · 收起时下边距会显得比展开时大一截（因为 padding 20 + margin 18 都在），
+        所以收起的块把 padding 调小一点，一排折起来才紧凑好看；
+      · 标题用 h2（后台每个块本来就写着 h2，是"这一块叫什么"的真正标题，
+        保留它读屏软件才念得对），把它的外边距和字号拉回摘要行该有的样子。 */
+.panel-head {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.panel-head::-webkit-details-marker { display: none; }
+.panel-head:hover h2 { color: var(--accent); }
+.panel-head h2 { margin: 0; font-size: 16.5px; font-weight: 600; display: flex; align-items: center; gap: 10px; }.panel-hint { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 12.5px; }
+.panel-caret { flex: 0 0 auto; color: var(--accent); font-size: 12px; transition: transform .15s; }
+.panel[open] > .panel-head .panel-caret { transform: rotate(180deg); }
+/* 收起来的时候：块本身矮一点，排在一起更清爽 */
+.panel:not([open]) { padding: 14px 20px; }
+.panel:not([open]) > .panel-head { margin: 0; }
+.panel-head + .panel-body { margin-top: 14px; }
+/* 摘要行后面的段落（说明文字）在收起时不该占位 —— <details> 原生就不渲染，
+   这里只是把展开时的间距调回原来的样子 */
+.panel-head + p.sub { margin-top: 14px; }
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
@@ -978,15 +1007,32 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .footer-links { margin: 0 0 6px; }
 .footer-links .sep { margin: 0 6px; opacity: .5; }
 
-/* 后台「文案」页：一组一组的输入框。左边写"这句话出现在哪"，右边是输入框 */
+/* 后台「文案」页：一组一组的输入框。左边写"这句话出现在哪"，右边是输入框
+   ★ 第六刀改成"每组一个可折叠的块"（原生 <details>）：97 个输入框摊开是 20.6 屏，
+     折起来一屏就能看全 6 组。 */
 .text-group {
   background: var(--panel2); border: 1px solid var(--line);
-  border-radius: 11px; padding: 14px 16px; margin-bottom: 14px;
+  border-radius: 11px; margin-bottom: 14px; overflow: hidden;
 }
-.text-group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.text-group-head h3 { margin: 0; font-size: 14.5px; }
+/* 折叠标题：整行可点（这一整块都是 <summary> 的点击区） */
+.text-group-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 13px 16px; cursor: pointer; list-style: none;
+}
+.text-group-head::-webkit-details-marker { display: none; }   /* Safari 自带的三角藏掉 */
+.text-group-head:hover { background: rgba(var(--accent-rgb), .05); }
+.text-group-title { font-size: 14.5px; font-weight: 700; color: var(--text); }
+/* 标题上那句「· 10 句（改过 2 句）」—— 不展开就知道哪组动过，是折叠后最值钱的信息 */
+.text-group-count { font-size: 12.5px; color: var(--muted); }
+.text-group[open] .text-group-count { color: var(--accent2); }
+.text-group-caret { margin-left: auto; font-size: 12px; color: var(--muted); transition: transform .15s; }
+.text-group[open] .text-group-caret { transform: rotate(180deg); color: var(--accent); }
+.text-group-body { padding: 0 16px 14px; }
+.text-group-tools {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 8px; padding-top: 10px; border-top: 1px solid var(--line);
+}
 .text-group-head .grow { flex: 1; min-width: 120px; }
-.text-group > p.sub { margin: 6px 0 10px; font-size: 12.5px; color: var(--muted); }
 .text-row {
   display: grid; grid-template-columns: minmax(170px, 260px) minmax(0, 1fr);
   gap: 4px 12px; align-items: start; padding: 9px 0; border-top: 1px dashed var(--line);
@@ -1002,15 +1048,46 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .text-default { grid-column: 2; margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 .text-default b { color: var(--accent2); font-weight: 400; }
 
-/* 图片「显示位置」的 3×3 九宫格 */
-.pos-picker { display: grid; grid-template-columns: repeat(3, 36px); gap: 4px; margin: 2px 0 4px; }
-.pos-btn {
-  width: 36px; height: 26px; padding: 0; font-family: inherit; font-size: 10.5px;
-  border: 1px solid var(--line); border-radius: 7px; background: var(--panel2);
-  color: var(--muted); cursor: pointer; transition: .13s;
+/* ★ 「文案」页的搜索框：97 个输入框里找一个，靠翻是翻不到的。
+   手机上也够大够好点（输入框占满一行，按钮跟在后面换行）。 */
+.text-search { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.text-search input {
+  flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--line);
+  color: var(--text); border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 13.5px;
 }
-.pos-btn:hover { border-color: rgba(var(--accent-rgb), .5); color: var(--text); }
-.pos-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.text-search input:focus { outline: none; border-color: rgba(var(--accent-rgb), .55); }
+
+/* ★ 图片「显示位置」：直接在图上拖（原来是 3×3 九宫格，主人要求删掉）
+   几条设计上的讲究：
+     · aspect-ratio 由 HTML 内联给（每个位置和它前台的容器比例一致）→ 所见即所得；
+     · touch-action: none 是**手机能拖的关键**：不写它，手指一拖浏览器就去滚页面了，
+       pointermove 收不到，表现就是"手机拖不动"；
+     · cursor: grab / grabbing 让电脑上一眼看出"这个东西能拖"；
+     · 里面那张图 pointer-events: none 是**必须的**：不写的话 pointerdown 会被算在
+       图片头上，而"按住图拖"这件事是挂在外层拖框上的 —— 结果就是鼠标按下去没反应
+       （我在这上面卡了很久）。事件全归外层，图只负责显示。
+     · object-fit: cover 和前台同一套规则 → "图铺满容器、不露白边"是同一个行为。 */
+.pos-drag {
+  position: relative; width: 100%; overflow: hidden; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel2);
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.pos-drag:active { cursor: grabbing; }
+.pos-drag.locked { cursor: default; }          /* 图比容器小 / 正好一样大 → 没得拖 */
+.pos-drag-img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  border: none; border-radius: 0; pointer-events: none;
+}
+/* 没图的时候别让那个框看着像坏了，给一行灰字 */
+.pos-drag::after {
+  content: '先上传一张图，再回来拖位置';
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 13px; color: var(--muted); pointer-events: none;
+}
+.pos-drag.has-image::after { content: none; }
+/* 没图时把里面那张空图藏掉，免得 alt 文字和提示叠在一起 */
+.pos-drag:not(.has-image) .pos-drag-img { visibility: hidden; }
+.pos-drag-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 
 /* 后台：服务条款的小节编辑器 */
 .terms-row {
@@ -1242,3 +1319,26 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     white-space: normal; overflow: visible; text-overflow: clip;
   }
 }
+
+/* ============================================================================
+   ★ 后台：整块折叠的面板（服务条款 / 常见问题 / 服务流程）2026-10-16
+   ----------------------------------------------------------------------------
+   为什么加：这三块每块都要 3000px 左右 ✗ 加起来把「文案」页顶到 9000px ✗
+             和上面那几组文案一样折起来 ✓ 点标题才展开 ✓
+   注意：这里的 <summary> 里包着一个 <h2> ✓ 所以要让它俩排在一行 ✓
+   ============================================================================ */
+.panel-fold > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 10px;
+  margin: 0;
+}
+.panel-fold > summary::-webkit-details-marker { display: none; }
+.panel-fold > summary h2 { margin: 0; display: inline; }
+.panel-fold > summary::after {
+  content: '▾'; margin-left: auto; color: var(--accent); font-size: 12px;
+  flex: 0 0 auto; transition: transform .15s;
+}
+.panel-fold[open] > summary::after { content: '▴'; }
+.panel-fold > summary:hover h2 { color: var(--accent); }
+/* 收起时，标题下面别再留那块 padding 的空当 ✗ */
+.panel-fold:not([open]) { padding-bottom: 18px; }

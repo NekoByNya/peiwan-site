@@ -83,7 +83,10 @@ const state = {
   textGroups: [],         // 目录：分组 + 每条的说明 / 默认值 / 现在的值
   textOverrides: {},      // 只存了这几句（"恢复默认"和"改过几句"都看它）
   terms: { title: '', updated: '', sections: [] },   // 服务条款
-  positionChoices: [],    // 九宫格的 9 个选项 [{value:'left top', name:'左上'}, …]
+  // ★ 位置值现在是在图上拖出来的（九宫格已经删掉），所以这份"9 个选项"后台界面
+  //   不再拿它画按钮了 —— 保留它只是为了老版本的页面/接口对得上（后端还在下发）。
+  //   拖框要用的"关键词 → 比例"表在下面 POS_FRACTIONS 里，两份含义不同，别搞混。
+  positionChoices: [],    // 老的 9 个关键词 [{value:'left top', name:'左上'}, …]
 };
 
 /* ---------- 时间工具（一律按北京时间算） ---------- */
@@ -297,7 +300,8 @@ function renderAll() {
   renderTerms();              // ★ 服务条款（标题 + 小节编辑器）
   renderFaq();                // ★ 常见问题（一条条增删改排序）
   renderSteps();              // ★ 服务流程（2~6 步）
-  renderPosPickers();         // ★ 图片显示位置的九宫格
+  renderPosPickers();         // ★ 图片显示位置：把五张图按当前位置摆好
+  bindPositionDragging();     // ★ 让那五个拖框能拖（鼠标 + 手指）
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
 }
@@ -2716,16 +2720,30 @@ $('#zoneAdminList').addEventListener('click', async (e) => {
       真要找某一格，用 [data-text-key="heroIntro"] 这种选择器。
    ========================================================================== */
 
-/** 九宫格要控制哪张图：容器 id / 存到哪个字段 / 顺手更新哪个预览图 / 是不是分区自己的 */
+/**
+ * 每一格"能拖的图"：
+ *   box    拖框（外层，**监听挂在它身上** —— 里面那张图是 pointer-events: none，
+ *          不然浏览器会把 pointerdown 记到图片上，做不出"按住图拖"的手感）
+ *   key    位置值存到哪个字段
+ *   imgKey 这张图本身存在哪个图片字段（用来把上传的图同步过来）
+ *   image  拖框里那张 <img> 的 id（用来设 object-position）
+ *   value  下面那行小字（当前值）的 id
+ *   zone   true = 存在分区资料里，否则存在全局资料里
+ */
 const POSITION_PICKERS = [
-  { box: 'posAvatar', key: 'avatarPosition', preview: 'avatarPreview' },
-  { box: 'posHomeBackground', key: 'backgroundPosition', preview: 'siteBackgroundPreview' },
-  { box: 'posHomeHero', key: 'heroImagePosition', preview: 'homeHeroPreview' },
-  { box: 'posZoneBackground', key: 'backgroundPosition', preview: 'zBackgroundPreview', zone: true },
-  { box: 'posZoneHero', key: 'heroImagePosition', preview: 'zHeroImagePreview', zone: true },
+  { box: 'posDragAvatar', key: 'avatarPosition', imgKey: 'avatar',
+    image: 'posImgAvatar', value: 'posValueAvatar' },
+  { box: 'posDragHomeBackground', key: 'backgroundPosition', imgKey: 'background',
+    image: 'posImgHomeBackground', value: 'posValueHomeBackground' },
+  { box: 'posDragHomeHero', key: 'heroImagePosition', imgKey: 'heroImage',
+    image: 'posImgHomeHero', value: 'posValueHomeHero' },
+  { box: 'posDragZoneBackground', key: 'backgroundPosition', imgKey: 'background',
+    image: 'posImgZoneBackground', value: 'posValueZoneBackground', zone: true },
+  { box: 'posDragZoneHero', key: 'heroImagePosition', imgKey: 'heroImage',
+    image: 'posImgZoneHero', value: 'posValueZoneHero', zone: true },
 ];
 
-/** 这个九宫格该读哪个对象：首页那几张存全局资料，分区那两张存分区资料 */
+/** 这个拖框该读哪个对象：首页那几张存全局资料，分区那两张存分区资料 */
 function positionTarget(cfg) {
   if (cfg.zone) {
     const z = currentZone();
@@ -2734,45 +2752,292 @@ function positionTarget(cfg) {
   return state.profile || null;
 }
 
-/** 画九宫格（当前选中的那个高亮）。顺手把预览图也按这个位置显示，点一下就看得到效果 */
+/* ---------- 位置值的换算（和后端 app.py 里那套规则一一对应） ----------
+   ⚠️ 两代值都要认，而且**不许互相改写**：
+     老关键词（"left top"、"center top"…）是主人线上库里现在存着的，
+     新百分比（"42% 18%"）是这一版拖出来的。CSS 两样都认，所以两边都原样存、原样发。
+     只有"现在该从哪儿开始拖"才需要把老值翻译成比例 —— 就是下面这个函数。 */
+const POS_FRACTIONS = {
+  'left top': [0, 0], 'center top': [0.5, 0], 'right top': [1, 0],
+  'left center': [0, 0.5], center: [0.5, 0.5], 'right center': [1, 0.5],
+  'left bottom': [0, 1], 'center bottom': [0.5, 1], 'right bottom': [1, 1],
+};
+const POS_ALIASES = {
+  'center center': 'center', top: 'center top', bottom: 'center bottom',
+  left: 'left center', right: 'right center',
+};
+
+/** 把位置值归一化：小写、去多余空格、补简写（对应后端的 POSITION_ALIASES） */
+function normPos(value) {
+  const text = String(value == null ? '' : value).trim().toLowerCase().split(/\s+/).join(' ');
+  return POS_ALIASES[text] || text;
+}
+
+/** 任何一代位置值 → [x, y]（0..1）。认不出来按"居中"算 */
+function positionFraction(value) {
+  const text = normPos(value);
+  if (POS_FRACTIONS[text]) return POS_FRACTIONS[text].slice();
+  const m = /^(-?\d+(?:\.\d+)?)\s*%\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*%?$/.exec(text);
+  if (m) {
+    const clamp = (n) => Math.min(1, Math.max(0, n / 100));
+    return [clamp(parseFloat(m[1])), clamp(parseFloat(m[2]))];
+  }
+  return [0.5, 0.5];
+}
+
+/** [x, y] → 存进库的字符串 "42% 18%"（取整，和后端 position_to_css 一致） */
+function fractionToPosition(fx, fy) {
+  return `${Math.round(Math.min(1, Math.max(0, fx)) * 100)}% ` +
+         `${Math.round(Math.min(1, Math.max(0, fy)) * 100)}%`;
+}
+
+/** 那 9 个标准位置的中文名（只有一个分量是 0/50/100 的也算，方便一眼看懂） */
+const POS_NAMES = {
+  '0% 0%': '左上', '50% 0%': '上', '100% 0%': '右上',
+  '0% 50%': '左', '50% 50%': '居中', '100% 50%': '右',
+  '0% 100%': '左下', '50% 100%': '下', '100% 100%': '右下',
+};
+
+/**
+ * 拖框下面那行小字。分两种说法，因为"锁住的方向"最容易被误会：
+ *   · 两个方向都能拖 → 「显示位置：42% 18%」；
+ *   · 有一个方向锁住了 → 补一句说清为什么，免得主人以为坏了。
+ *     比如 2400×600 的横长图放进 16:9 的框里，上下早就顶满了、根本没东西可挪，
+ *     这时候 y 就固定 50%，只让你左右拖。
+ */
+function posLabelText(css, spec) {
+  const name = POS_NAMES[css];
+  if (spec.locked) return `显示位置：${css}（这张图不会被裁，不用调）`;
+  const free = [];
+  if (spec.x[0] !== spec.x[1]) free.push('左右');
+  if (spec.y[0] !== spec.y[1]) free.push('上下');
+  const tip = free.length === 1 ? `（${free[0]}拖）` : '';
+  return `显示位置：${name ? name + ' ' : ''}${css}${tip}`;
+}
+/**
+ * ★ 边界怎么算：**图永远铺满容器，不许露出白边**。
+ *
+ *   object-fit: cover 会把图放大到两边都盖住容器，所以两个方向各自"溢出"多少是不一样
+ *   的（coverScale 就是那个放大倍数）：
+ *     · 宽图（溢出在上下）→ 左右已经顶满 → **只能上下拖**，x 锁 50%；
+ *     · 高图（溢出在左右）→ 上下已经顶满 → **只能左右拖**，y 锁 50%；
+ *     · 图和容器比例正好一样 / 图比容器还小 → 两个方向都没得拖 → 整个锁住。
+ *
+ *   算出来的比例就是 object-position 的取值范围（0% = 贴左上，100% = 贴右下），
+ *   所以拖到头自然就停住，永远露不出白边 —— 这一条和前台是同一个 CSS 行为。
+ *
+ *   ⚠️ "图比容器还小"（比如 200×200 的小图放进 1500×542 的横幅）在 cover 下其实也会被
+ *      放大到盖满，所以那种情况照样能拖 —— 这就是为什么下面判断的是"溢出量"而不是
+ *      "图片原始尺寸和容器谁大"。
+ */
+function posConstraints(cfg, box) {
+  const spec = { x: [0.5, 0.5], y: [0.5, 0.5], measurable: false, locked: false };
+  const img = cfg.image ? $('#' + cfg.image) : null;
+  const bw = box.clientWidth, bh = box.clientHeight;
+  const iw = img ? img.naturalWidth : 0, ih = img ? img.naturalHeight : 0;
+  if (bw > 0 && bh > 0 && iw > 0 && ih > 0) {
+    const coverScale = Math.max(bw / iw, bh / ih);
+    const dw = iw * coverScale, dh = ih * coverScale;
+    if (dw - bw > 0.5) spec.x = [0, 1];
+    if (dh - bh > 0.5) spec.y = [0, 1];
+    spec.measurable = true;
+    spec.locked = spec.x[0] === spec.x[1] && spec.y[0] === spec.y[1];
+  }
+  // ⚠️ 量不出来的时候（分区那一块在「个人主页」模式下是 hidden 的，尺寸全是 0；
+  //    图片还没加载完也是 0）**绝不能判成 locked** —— 否则切一下模式，好好的
+  //    "只能左右拖"就变成了"这张图不用裁，拖不动"，看着像坏了。
+  //    这种时候就当成"没有限制"，等真正按下去拖（那时元素一定可见）再量一次。
+  return spec;
+}
+
+/** 把"能拖的范围"限制住：拖不动的方向直接钉在中间 */
+function clampPosToSpec(fx, fy, spec) {
+  const fx2 = spec.x[0] === spec.x[1] ? 0.5 : Math.min(spec.x[1], Math.max(spec.x[0], fx));
+  const fy2 = spec.y[0] === spec.y[1] ? 0.5 : Math.min(spec.y[1], Math.max(spec.y[0], fy));
+  return [fx2, fy2];
+}
+
+/**
+ * 把每个拖框的上传图同步过去（一个位置一份图 —— 缩略图和拖框本质上是同一张图的两个视图，
+ * 指向同一个 url 就不会出现"换图了拖框还是老的"）。
+ *
+ * ⚠️ onload 的监听**不在这里挂**，见 bindPositionDragging() 开头 —— 这里每渲染一次都会
+ *    走一遍，挂在这儿会重复绑；而且"图已经加载完了"时再挂就永远等不到 load 事件了。
+ */
+function syncDragImages() {
+  POSITION_PICKERS.forEach((cfg) => {
+    const img = cfg.image ? $('#' + cfg.image) : null;
+    if (!img) return;
+    const target = positionTarget(cfg);
+    const url = (target && target[cfg.imgKey]) || '';
+    if (img.getAttribute('src') !== (url || null)) img.src = url || '';
+    const box = $('#' + cfg.box);
+    if (box) box.classList.toggle('has-image', !!url);
+  });
+}
+
+/**
+ * 画出五个拖框：把图按当前位置摆好、按边界锁住拖不动的方向、更新下面的小字。
+ * 顺手把"当前值"那行小字也刷一遍（点「居中」/ 拖动 / 切换分区之后都要重画）。
+ *
+ * ⚠️ 两个"晚一点再算一次"的补丁，都是因为**边界要靠图片真实尺寸 + 拖框真实尺寸**：
+ *     ① 图刚设完 src 时还没解码（naturalWidth = 0）→ 由 load 事件再喊一次（见 bindPositionDragging）；
+ *     ② 分区那一块在「个人主页」模式下是 hidden 的，尺寸是 0；切过去时如果图早就缓存好了，
+ *        不会再触发 load，所以这里再用 requestAnimationFrame 补一次（那时布局已经完成）。
+ */
 function renderPosPickers() {
+  syncDragImages();
   POSITION_PICKERS.forEach((cfg) => {
     const box = $('#' + cfg.box);
     if (!box) return;
     const target = positionTarget(cfg);
-    const value = (target && target[cfg.key]) || 'center';
-    box.innerHTML = (state.positionChoices || []).map((c) =>
-      `<button type="button" class="pos-btn${c.value === value ? ' active' : ''}"
-         data-pos-value="${escapeHtml(c.value)}"
-         title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join('');
-    const preview = $('#' + cfg.preview);
-    if (preview) {
-      preview.style.objectPosition = value;
-      preview.title = `显示位置：${value}`;
+    const raw = (target && target[cfg.key]) || 'center';
+    const [fx, fy] = positionFraction(raw);
+    const spec = posConstraints(cfg, box);
+    const [cx, cy] = clampPosToSpec(fx, fy, spec);
+    const css = fractionToPosition(cx, cy);
+    // ★ 拖框里的图直接吃 object-position —— 和前台 object-fit: cover 那一套完全一致，
+    //   所以"后台看到的"就是"客户看到的"（预览框的比例在 HTML 里按容器比例给定）。
+    if (cfg.image) {
+      const img = $('#' + cfg.image);
+      if (img) img.style.objectPosition = css;
     }
+    box.classList.toggle('locked', spec.locked);
+    const label = cfg.value ? $('#' + cfg.value) : null;
+    if (label) label.textContent = posLabelText(css, spec);
+  });
+  // ② 上面说的"晚一点再算一次"：切到分区那一半之后，这一帧的布局才算完，
+  //    下一帧量到的才是真尺寸。只补一次（requestAnimationFrame 不会自己循环）。
+  if (!renderPosPickers._again) {
+    renderPosPickers._again = true;
+    requestAnimationFrame(() => {
+      renderPosPickers._again = false;
+      renderPosPickers();
+    });
+  }
+}
+
+/** 拖动只改内存（和图片一个规矩：要点「保存这个分区」/「保存主页设置」才生效） */
+function bindPositionDragging() {
+  POSITION_PICKERS.forEach((cfg) => {
+    const box = $('#' + cfg.box);
+    if (!box) return;
+
+    // ★★ 图片加载完必须重画一次 —— 这一条踩过坑，别删：
+    //    "能拖哪个方向"是用图片的 naturalWidth/naturalHeight 和拖框尺寸算出来的。
+    //    刚设完 src 那一瞬间图还没解码完（naturalWidth = 0），算出来就成了"没得拖"，
+    //    结果老老实实存着 "left top" 的图，一打开后台却显示成「居中 · 拖不动」。
+    //    尤其是分区那一块：它在「个人主页」模式下是 hidden 的，浏览器会把图的加载
+    //    一直拖到区块可见才做，所以 load 事件来得比第一次 renderPosPickers 还晚。
+    //    ⚠️ 监听只能挂一次（下面有 dataset 标记），而且必须在设 src 之前就挂好。
+    const img = cfg.image ? $('#' + cfg.image) : null;
+    if (img && !img.dataset.posOnload) {
+      img.dataset.posOnload = '1';
+      img.addEventListener('load', () => renderPosPickers());
+      img.addEventListener('error', () => renderPosPickers());
+    }
+    let drag = null;
+
+    box.addEventListener('pointerdown', (e) => {
+      const target = positionTarget(cfg);
+      if (!target) return toast('还没有分区，先去「分区管理」新建一个', true);
+      const dimg = cfg.image ? $('#' + cfg.image) : null;
+      if (!dimg || !dimg.getAttribute('src')) return toast('先上传一张图，再拖位置', true);
+      // 图还没解码完的话量不出比例（naturalWidth = 0），这时候拖了也算不准，先等一下
+      if (!dimg.naturalWidth || !dimg.naturalHeight) return;
+      const spec = posConstraints(cfg, box);
+      if (spec.locked) return;
+      const start = positionFraction(target[cfg.key]);
+      // ★★ 把拖动增量换算成 object-position 的变化（这段推导错了就会"拖不动"，别凭感觉改）：
+      //
+      //   cover 之后，图在**拖框坐标系**里的尺寸是：
+      //       drawBoxW = max(框宽, 框高 × 图比例)…… 不用记这个式子，直接算：
+      //       scale    = cover 的放大倍数 = drawW / 图原始宽
+      //       drawBoxW = drawW / scale        （图在框里画出来有多宽）
+      //       ovfBoxW  = drawBoxW - 框宽       （图横向比框多出来的部分）
+      //   object-position 的 x% 表示"图往左让出 ovfBoxW 的 x%"，
+      //   所以 x 每加 1%，图就在框里往左走 ovfBoxW / 100 像素。
+      //   → 鼠标右移 dx 像素、要让图也跟着右移 dx 像素，x% 就得**减去**
+      //       dx / ovfBoxW × 100 … 换成 0..1 的比例就是 dx / ovfBoxW。
+      //
+      //   ⚠️ 我第一版把 ovfBoxW 算成了 drawW - 框宽（那是**图片坐标系**里的溢出，
+      //      数值被放大了 scale 倍），结果"宽图"算出来是负数 → 判定成"拖不动"，
+      //      屏幕上就是鼠标按住拖、图纹丝不动。
+      const scale = Math.max(box.clientWidth / dimg.naturalWidth,
+                             box.clientHeight / dimg.naturalHeight);
+      const drawBoxW = dimg.naturalWidth * scale;      // 图在框里画出来多宽
+      const drawBoxH = dimg.naturalHeight * scale;     // 图在框里画出来多高
+      const ovfBoxW = drawBoxW - box.clientWidth;      // 横向比框多出来的部分
+      const ovfBoxH = drawBoxH - box.clientHeight;     // 纵向比框多出来的部分
+      drag = {
+        startX: e.clientX, startY: e.clientY,
+        fx: start[0], fy: start[1], spec, ovfBoxW, ovfBoxH,
+      };
+      if (box.setPointerCapture) { try { box.setPointerCapture(e.pointerId); } catch (err) { /* 无所谓 */ } }
+      // 手指按下时别让浏览器去滚页面 / 触发长按菜单（CSS 的 touch-action 是主力，这里是双保险）
+      e.preventDefault();
+    });
+
+    box.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      let fx = drag.fx, fy = drag.fy;
+      if (drag.spec.x[0] !== drag.spec.x[1] && drag.ovfBoxW > 0.5) {
+        fx = drag.fx - (e.clientX - drag.startX) / drag.ovfBoxW;
+      }
+      if (drag.spec.y[0] !== drag.spec.y[1] && drag.ovfBoxH > 0.5) {
+        fy = drag.fy - (e.clientY - drag.startY) / drag.ovfBoxH;
+      }
+      const [cx, cy] = clampPosToSpec(fx, fy, drag.spec);
+      const target = positionTarget(cfg);
+      if (!target) return;
+      target[cfg.key] = fractionToPosition(cx, cy);
+      renderPosPickers();
+    });
+
+    const finish = (e) => {
+      if (!drag) return;
+      drag = null;
+      if (box.releasePointerCapture && e && e.pointerId != null) {
+        try { box.releasePointerCapture(e.pointerId); } catch (err) { /* 无所谓 */ }
+      }
+      // 说清楚"还没生效"：和上传图片一个规矩，得点保存
+      const stateEl = cfg.zone ? $('#zoneState') : $('#uploadState');
+      if (stateEl) {
+        stateEl.className = 'hint';
+        stateEl.textContent = cfg.zone
+          ? '显示位置已改，记得点「保存这个分区」'
+          : '显示位置已改，记得点「保存主页设置」';
+      }
+    };
+    box.addEventListener('pointerup', finish);
+    box.addEventListener('pointercancel', finish);
+  });
+
+  // 「居中」按钮：拖歪了一键回中间（= 后端默认值 "center"，和以前一模一样）
+  //   找 picker 的方式：先按拖框 id 对（box），不对再按图片 id 找（image）——
+  //   两种写法都容得下，以后改 HTML 也不会因为换了个 id 就悄悄失灵。
+  $$('[data-pos-center]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.posCenter;
+      const cfg = POSITION_PICKERS.find((c) => c.box === id || c.image === id);
+      if (!cfg) return;
+      const target = positionTarget(cfg);
+      if (!target) return toast('还没有分区，先去「分区管理」新建一个', true);
+      target[cfg.key] = 'center';
+      renderPosPickers();
+      const stateEl = cfg.zone ? $('#zoneState') : $('#uploadState');
+      if (stateEl) {
+        stateEl.className = 'hint';
+        stateEl.textContent = cfg.zone
+          ? '已回到居中，记得点「保存这个分区」' : '已回到居中，记得点「保存主页设置」';
+      }
+    });
   });
 }
 
-// 点九宫格：只改内存（和图片一样，等「保存这个分区」/「保存主页设置」一起提交）
-POSITION_PICKERS.forEach((cfg) => {
-  const box = $('#' + cfg.box);
-  if (!box) return;
-  box.addEventListener('click', (e) => {
-    const btn = e.target.closest('.pos-btn');
-    if (!btn) return;
-    const target = positionTarget(cfg);
-    if (!target) return toast('还没有分区，先去「分区管理」新建一个', true);
-    target[cfg.key] = btn.dataset.posValue;
-    renderPosPickers();
-    // 说清楚"还没生效"：和图片一个规矩，得点保存
-    const stateEl = cfg.zone ? $('#zoneState') : $('#uploadState');
-    if (stateEl) {
-      stateEl.className = 'hint';
-      stateEl.textContent = cfg.zone ? '显示位置已改，记得点「保存这个分区」' : '显示位置已改，记得点「保存主页设置」';
-    }
-  });
-});
 
+/** 把"目录"和"现在的值"重新拼一遍（保存 / 恢复默认之后要用它重画） */
 /** 把"目录"和"现在的值"重新拼一遍（保存 / 恢复默认之后要用它重画） */
 function syncTextGroups() {
   const texts = state.texts || {};
@@ -2788,7 +3053,125 @@ function syncTextGroups() {
 /** 现在一共有几句是主人自己改的 */
 const customizedCount = () => Object.keys(state.textOverrides || {}).length;
 
-/** 画「文案」页：按目录分组，一组一块，一行一个输入框 */
+/* ==========================================================================
+   ★ 「文案」页的折叠 + 搜索（第六刀）
+   --------------------------------------------------------------------------
+   主人的原话：「改编文案啥的太长了吗，把他们拿去折叠一下」。
+   实测这一页 97 个输入框、手机上是 20.6 屏 —— 不折根本翻不到底。
+
+   三条设计：
+     1. **每组一个 <details>，默认收起**。用原生 details 而不是自己写 JS 折叠：
+        键盘（Tab 过去按回车）、读屏软件、浏览器自带的"页内查找"全都认它，
+        和前台的「常见问题」折叠块是同一套做法，主人已经见惯了。
+     2. **标题上写清楚"这组几句、改过几句"**（`① 主页 · 10 句（改过 2 句）`）。
+        这是折叠之后最值钱的一条信息：不用展开就知道哪组动过。
+        数是后端 text_groups_for_admin() 算好一起下发的（前端要是自己数，
+        就得先把 97 个输入框全渲染出来，折叠就白折了）。
+     3. **展开状态记在 localStorage**：刷新回来还是上次打开的那组。
+        ⚠️ 但**搜索优先**：一输入关键词就完全按搜索结果来展开，
+        不受"上次打开过哪组"影响，清空搜索框才回到那份记忆。
+
+   搜索匹配的是**说明文字 + 现在生效的那句话**（不区分大小写、去首尾空格）。
+   为什么连内容一起搜：主人想找"哪句里提到微信"，光搜标签是搜不到的。
+   ========================================================================== */
+
+const TEXTS_OPEN_KEY = 'peiwan.admin.texts.openGroups';   // 记着"哪几组是展开的"
+
+/** 读回展开状态（数组，存的是组 id）。读不出来就当"一组都没展开" */
+function readOpenGroups() {
+  try {
+    const raw = localStorage.getItem(TEXTS_OPEN_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch (err) {
+    return [];      // 隐私模式下 localStorage 会直接抛错，别让它把整页带崩
+  }
+}
+
+/** 记下展开状态（失败就算了，不值得为它报错） */
+function writeOpenGroups(ids) {
+  try {
+    localStorage.setItem(TEXTS_OPEN_KEY, JSON.stringify(ids));
+  } catch (err) { /* 无所谓 */ }
+}
+
+/** 搜"现在生效的那句话"时要拿内存里的值（用户可能刚改过还没保存） */
+function currentTextValue(key) {
+  const el = document.querySelector(`[data-text-key="${key}"]`);
+  if (el) return el.value;
+  return (state.texts || {})[key] || '';
+}
+
+/** 这一组里有没有"标签或内容含这个词"的句子 —— 返回命中的 key 集合 */
+function searchHitsInGroup(group, needle) {
+  const hits = new Set();
+  (group.fields || []).forEach((f) => {
+    const hay = `${f.label || ''}\n${currentTextValue(f.key) || ''}`.toLowerCase();
+    if (hay.includes(needle)) hits.add(f.key);
+  });
+  return hits;
+}
+
+/**
+ * 按搜索框的内容显示 / 隐藏句子与分组。
+ *
+ * 空搜索框 = 恢复正常折叠视图（按 localStorage 的记忆展开）。
+ * 有搜索词 = 只留命中的句子；命中所在的分组自动展开；一句都没命中给个提示。
+ */
+function applyTextSearch() {
+  const box = $('#textGroupList');
+  if (!box) return;
+  const input = $('#textSearch');
+  const needle = String((input && input.value) || '').trim().toLowerCase();
+  const detailsList = Array.from(box.querySelectorAll('details.text-group'));
+  const remembered = readOpenGroups();
+
+  if (!needle) {
+    // ---------- 没搜索：回到"记住的折叠状态" ----------
+    detailsList.forEach((d) => {
+      d.hidden = false;
+      d.open = remembered.indexOf(String(d.dataset.group)) >= 0;
+      d.querySelectorAll('.text-row').forEach((row) => { row.hidden = false; });
+    });
+    const tip = $('#textSearchState');
+    if (tip) { tip.textContent = ''; tip.className = 'hint'; }
+    const clearBtn = $('#textSearchClear');
+    if (clearBtn) clearBtn.hidden = true;
+    return;
+  }
+
+  // ---------- 搜索中：搜索优先，不理会 localStorage 的记忆 ----------
+  let totalHits = 0;
+  detailsList.forEach((d) => {
+    const group = (state.textGroups || []).find((g) => String(g.id) === d.dataset.group);
+    const hits = group ? searchHitsInGroup(group, needle) : new Set();
+    let groupHits = 0;
+    d.querySelectorAll('.text-row').forEach((row) => {
+      const key = row.dataset.textKey;
+      const show = hits.has(key);
+      row.hidden = !show;
+      if (show) groupHits += 1;
+    });
+    totalHits += groupHits;
+    d.hidden = groupHits === 0;      // 一句都没命中的组整个藏起来
+    d.open = groupHits > 0;          // 命中的组自动展开
+  });
+
+  const tip = $('#textSearchState');
+  const clearBtn = $('#textSearchClear');
+  if (clearBtn) clearBtn.hidden = false;
+  if (tip) {
+    if (totalHits) {
+      tip.className = 'hint ok';
+      tip.textContent = `找到 ${totalHits} 句含「${input.value.trim()}」的句子`;
+    } else {
+      tip.className = 'hint error';
+      tip.textContent = `没找到含「${input.value.trim()}」的句子`;
+    }
+  }
+}
+
+/** 画「文案」页：按目录分组，一组一个可折叠的块，一行一个输入框 */
 function renderTexts() {
   const box = $('#textGroupList');
   if (!box) return;
@@ -2797,19 +3180,31 @@ function renderTexts() {
     box.innerHTML = '<div class="empty-state">没拿到文案目录，点右上角「刷新数据」试试。</div>';
     return;
   }
+  const remembered = readOpenGroups();
+  void remembered;    // 展开状态由 applyTextSearch() 统一设（它读同一份记忆）
   box.innerHTML = groups.map((g) => {
     const changed = g.fields.filter((f) => f.custom).length;
+    // 标题上那行字：句数 + 改过几句（一个都没改 → 「全是默认」；全改了 → 「全部改过」）
+    const total = Number.isFinite(g.count) ? g.count : g.fields.length;
+    const summary = !changed ? '全是默认'
+      : (changed === total ? '全部改过' : `改过 ${changed} 句`);
+    // ⚠️ 这里**故意不写 open 属性** = 默认全部收起（主人的要求）。
+    //    哪几组要展开由画完之后调 applyTextSearch() 按记忆 / 搜索词补上。
     return `
-    <div class="text-group" data-group="${escapeHtml(g.id)}">
-      <div class="text-group-head">
-        <h3>${escapeHtml(g.name)}</h3>
-        <span class="hint grow">${escapeHtml(g.hint || '')}</span>
-        <button class="button small ghost" data-reset-group="${escapeHtml(g.id)}">这一组恢复默认</button>
-      </div>
-      <p class="sub">${changed ? `这一组里有 ${changed} 句是你改过的（下面标着「已改」）`
-        : '这一组现在全是默认文案，一个字都没改'}</p>
-      ${g.fields.map((f) => `
-        <div class="text-row">
+    <details class="text-group" data-group="${escapeHtml(g.id)}">
+      <summary class="text-group-head">
+        <span class="text-group-title">${escapeHtml(g.name)}</span>
+        <span class="text-group-count">· ${total} 句（${summary}）</span>
+        <span class="text-group-caret" aria-hidden="true">▾</span>
+      </summary>
+      <div class="text-group-body">
+        <div class="text-group-tools">
+          <span class="hint grow">${escapeHtml(g.hint || '')}</span>
+          <button class="button small ghost" type="button"
+                  data-reset-group="${escapeHtml(g.id)}">这一组恢复默认</button>
+        </div>
+        ${g.fields.map((f) => `
+        <div class="text-row" data-text-key="${escapeHtml(f.key)}">
           <label class="text-label" for="tf-${escapeHtml(f.key)}">${escapeHtml(f.label)}
             ${f.custom ? '<span class="badge mini">已改</span>' : ''}</label>
           ${f.multiline
@@ -2819,8 +3214,21 @@ function renderTexts() {
                  maxlength="${f.max}"${f.placeholder ? ` placeholder="${escapeHtml(f.placeholder)}"` : ''} value="${escapeHtml(f.value)}">`}
           ${f.custom ? `<p class="text-default">默认那句话：<b>${escapeHtml(f.default)}</b></p>` : ''}
         </div>`).join('')}
-    </div>`;
+      </div>
+    </details>`;
   }).join('');
+  // 记住展开状态：每次开/关都写回 localStorage
+  box.querySelectorAll('details.text-group').forEach((d) => {
+    d.addEventListener('toggle', () => {
+      // 搜索的时候不记（那是搜索的结果，不是主人的选择）
+      const searchBox = $('#textSearch');
+      if (searchBox && String(searchBox.value || '').trim()) return;
+      const open = box.querySelectorAll('details.text-group[open]');
+      writeOpenGroups(Array.from(open).map((x) => x.dataset.group));
+    });
+  });
+  // 画完立刻按"记忆 + 当前搜索词"摆好展开状态
+  applyTextSearch();
   const stateEl = $('#textsState');
   if (stateEl) {
     stateEl.className = 'hint';
@@ -2981,6 +3389,17 @@ async function saveTermsForm() {
 
 $('#saveTexts').addEventListener('click', saveTextsForm);
 $('#resetAllTexts').addEventListener('click', () => resetTextsFlow(null, ''));
+// ★ 文案页的搜索框：「输入就过滤」用 input 事件（手机上也是打一个字就动一下）
+if ($('#textSearch')) {
+  $('#textSearch').addEventListener('input', applyTextSearch);
+}
+if ($('#textSearchClear')) {
+  $('#textSearchClear').addEventListener('click', () => {
+    $('#textSearch').value = '';
+    applyTextSearch();
+    $('#textSearch').focus();
+  });
+}
 $('#textGroupList').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-reset-group]');
   if (!btn) return;
@@ -3365,6 +3784,11 @@ function applyEditMode() {
   }
   const kindHint = $('#zoneKindHint');
   if (kindHint && home) kindHint.textContent = '（首页，不属于任何分区）';
+
+  // ★ 切换"主页 / 分区"会隐藏另一半表单，被隐藏的那几个拖框就**量不到尺寸**了
+  //   （clientWidth = 0）。这里重画一次，让"能不能拖、锁哪个方向"跟着可见的那一半更新，
+  //   否则切过去之后小字上会留着一句过时的"拖不动"。
+  renderPosPickers();
 }
 
 $('#saveZone').addEventListener('click', () => saveZone(false));

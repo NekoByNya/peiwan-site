@@ -343,28 +343,35 @@ TEXT_LIMITS = {f["key"]: int(f.get("max") or 120) for g in TEXT_GROUPS for f in 
 TEXTS_STORE_KEY = "texts"        # store 里存"主人改过的那几句"（JSON 对象）
 
 # ============================================================================
-# ★ 图片「显示位置」：3×3 九宫格（左上 / 上 / 右上 / 左 / 居中 / 右 / 左下 / 下 / 右下）
+# ★ 图片「显示位置」：**百分比**（新的，直接在图上拖）+ 老的 9 个关键词（继续认）
 #
 #   为什么需要它：有些图会被**裁掉一部分**才铺得满（背景图是 background-size: cover，
 #   头像和首屏图是 object-fit: cover）。以前客户想让它"露中间那块"，主人只能自己
-#   先在 PS 里裁好再传 —— 现在点一下九宫格就行。
+#   先在 PS 里裁好再传 —— 现在在后台直接把图拖着挪一下就行。
 #
 #   哪些图需要（我自己逐个去看 CSS 确认过的）：
 #     · 首页整页背景图（.site-bg：background-size: cover）        → 要
 #     · 头像（.avatar：object-fit: cover）                        → 要
 #     · 首页首屏主视觉 / 分区首屏主视觉（.hero-media img：object-fit: cover）→ 要
 #     · 分区页背景图（.zone-hero-bg：background-size: cover）      → 要
-#   哪些图**不需要**（所以后台也没给它们放九宫格）：
+#   哪些图**不需要**（所以后台也没给它们放位置控件）：
 #     · 微信二维码（object-fit: contain —— 裁了就有扫不出来的风险，必须完整）
 #     · 微信分享图（微信/QQ 自己裁卡片，我们控制不了）
 #     · 价目表长图（整张缩放显示，不裁）
 #     · 展示墙的图（.gallery-item img 是 170px 高的缩略图，一批图共用一套样式；
 #       单张单独调要给它加一列字段 + 一堆 UI，先不做，见交接说明的取舍表）
 #
-#   存哪：**跟着图片走** —— 首页那几张存在全局资料里（profile），
-#   分区那两张存在分区资料里（zones.profile）。这样"保存主页设置 / 保存这个分区"
-#   就顺手把它一起存了，而且备份不用改（profile 整个都在备份里）。
-#   默认 "center" = 和以前一模一样，所以老数据/没设置过的人看不出任何变化。
+#   ⚠️⚠️ 两代值**必须都能读**（这一条是整件事里最要紧的）：
+#     · 老值（第四刀那版，主人线上库里现在存的就是它）：
+#         "left top" / "center top" / … / "center"（默认）这类 **9 个关键词**；
+#     · 新值（这一版拖出来的）："42% 18%" 这种**百分比**，就是 CSS 的 object-position。
+#   两代值**原样存、原样下发**，谁也不转谁 —— 因为 CSS 本来就两样都认：
+#     object-position: left top   和   object-position: 0% 0%   渲染出来一模一样（CSS 规范）。
+#   这么定的好处有两个，都很实在：
+#     ① 老数据一个字节都不动 —— 没拖过的图，前台拿到的还是原来那个字符串，
+#        连"看起来一样但值变了"的风险都没有；
+#     ② 前台不用改一行：pos()（site.js / zone.js）拿到什么就塞进 style 里，两代都认。
+#   "两个值是不是同一个位置"这件事只在**后台拖动**的时候才需要算，见 position_to_fraction()。
 POSITION_DEFAULT = "center"
 POSITION_CHOICES = [
     ("left top", "左上"), ("center top", "上"), ("right top", "右上"),
@@ -374,9 +381,79 @@ POSITION_CHOICES = [
 POSITION_VALUES = [value for value, _name in POSITION_CHOICES]
 # 单个关键字也认（"top" = "center top"），省得写接口/写测试的人踩坑
 POSITION_ALIASES = {"center center": "center", "top": "center top", "bottom": "center bottom",
-                    "left": "left center", "right": "right center"}
+                    "left": "left center", "right": "right center",
+                    # ★ 2026-10-16 补的两个：老九宫格那两格的字面值就是「top left」「bottom right」✗
+                    #   漏了它们的话，老数据里存着这两种值的图会被当成脏值退回 center ✗
+                    #   （当前线上数据全是 center ✓ 没受影响 ✓ 但按"老值必须照样能用"的要求必须补 ✓）
+                    "top left": "left top", "bottom right": "right bottom"}
+# ★ 9 个关键词各自等于哪个百分比（x, y 都是 0..1 的比例）。
+#   这张表有两个用处：
+#     ① 后台打开时把老值"翻译"成能拖的位置（否则不知道那个关键词该从哪儿开始拖）；
+#     ② 拖完算出来的比例如果正好落在标准位置附近，还能存回关键词（见下面 position_to_css）。
+#   注意 center 在这里是 [0.5, 0.5]，和 "50% 50%" 完全等价。
+POSITION_FRACTIONS = {
+    "left top": (0.0, 0.0), "center top": (0.5, 0.0), "right top": (1.0, 0.0),
+    "left center": (0.0, 0.5), "center": (0.5, 0.5), "right center": (1.0, 0.5),
+    "left bottom": (0.0, 1.0), "center bottom": (0.5, 1.0), "right bottom": (1.0, 1.0),
+}
+# 逗号 / 空格都当分隔符（"42% 18%" 和 "42%,18%" 都认）。
+# ⚠️ 顺序要紧："50% 0" 要能整条匹配上（两个都带 % 的写法优先），所以表达式里 % 是可选的。
+_POSITION_PERCENT_RE = re.compile(
+    r"^\s*(-?\d+(?:\.\d+)?)\s*%\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*%?\s*$")
 PROFILE_POSITION_KEYS = ("avatarPosition", "backgroundPosition", "heroImagePosition")
 ZONE_POSITION_KEYS = ("backgroundPosition", "heroImagePosition")
+
+
+def position_to_fraction(value):
+    """
+    把**任何一代**位置值翻译成 (x, y)，x / y 都是 0..1 的比例。
+
+    认这三种写法（其它一律当成"居中"，和 clean_image_position 的兜底保持一致）：
+      · "left top" / "center bottom" / "center" 这种老关键词（含 "top"、"right" 简写）；
+      · "42% 18%" / "42%,18%" / "0 100"          这种百分比（就是 CSS 的 object-position）；
+      · 空值 / 乱写的值                            → (0.5, 0.5)。
+
+    给谁用：**只给后台的拖动界面用**（它要知道"现在这个关键词在哪儿"，才能从这个位置
+    接着往下拖）。前台渲染根本不经过它 —— 前台直接把原始字符串塞进 style。
+    """
+    text = " ".join(str(value or "").strip().lower().split())
+    text = POSITION_ALIASES.get(text, text)
+    if text in POSITION_FRACTIONS:
+        return POSITION_FRACTIONS[text]
+    m = _POSITION_PERCENT_RE.match(text)
+    if m:
+        # 夹到 0..1：CSS 允许超过 100%（把图拖出容器外），但我们界面上永远只产生
+        # 0..100，库里手改出来的 150% 也当成"拖到最边上"，免得算拖动增量时算出负数。
+        return (min(1.0, max(0.0, float(m.group(1)) / 100.0)),
+                min(1.0, max(0.0, float(m.group(2)) / 100.0)))
+    return POSITION_FRACTIONS[POSITION_DEFAULT]
+
+
+def position_to_css(value):
+    """
+    把任何一代位置值变成**能直接写进 CSS 的合法值**（前台 / 后台预览都用它）。
+
+    和 clean_image_position() 的区别（两个都要，别搞混）：
+      · clean_image_position()：**入库 / 下发给前台**用的。老关键词原样保留
+        （这样老数据一个字节都不动），百分比保留成 "42% 18%"。
+      · position_to_css()      ：**算出来给浏览器看**用的。老关键词也照样原样返回
+        （CSS 认），只有识别不出来的脏值才退回 "center"。
+    """
+    text = " ".join(str(value or "").strip().lower().split())
+    text = POSITION_ALIASES.get(text, text)
+    if text in POSITION_VALUES:
+        return text
+    if _POSITION_PERCENT_RE.match(text):
+        x, y = position_to_fraction(text)
+        # 取整：拖动会产生 41.83673…% 这种一长串小数，存进库又难看又难比。
+        # 1% 的精度在 1000px 宽的图上是 10px，肉眼看不出来。
+        return "%d%% %d%%" % (round(x * 100), round(y * 100))
+    return POSITION_DEFAULT
+
+#   存哪：**跟着图片走** —— 首页那几张存在全局资料里（profile），
+#   分区那两张存在分区资料里（zones.profile）。这样"保存主页设置 / 保存这个分区"
+#   就顺手把它一起存了，而且备份不用改（profile 整个都在备份里）。
+#   默认 "center" = 和以前一模一样，所以老数据/没设置过的人看不出任何变化。
 
 # ============================================================================
 # ★ 服务条款（store key='terms'）：/terms 那一页的全部内容
@@ -754,22 +831,27 @@ def clean_link(raw):
 
 def clean_image_position(value):
     """
-    ★ 把「图片显示位置」洗成 9 个合法值之一（左上 / 上 / 右上 / 左 / 居中 / 右 / 左下 / 下 / 右下）。
+    ★ 把「图片显示位置」洗成**两代都合法**的值（老的 9 个关键词 / 新的 "42% 18%"）。
 
-    返回的是**能直接写进 CSS 的字符串**（"left top"、"center"…），前台拿到就塞进
-    `background-position` / `object-position`，不做任何转换 —— 少一层转换就少一处能对不上的地方。
+    返回的是**能直接写进 CSS 的字符串**，前台拿到就塞进 `background-position` /
+    `object-position`，不做任何转换 —— 少一层转换就少一处能对不上的地方。
+
+    认这几种：
+      · 老的 9 个关键词原样返回（"left top"、"center"…）—— ★ 老数据一个字节都不动；
+      · 新的百分比保留成 "42% 18%"（顺序和空格由 position_to_css 统一规整）；
+      · 简写顺手补齐（"top" = "center top"），省得写接口、写测试的人踩坑。
 
     认不出来的一律退回 "center"，这一点是故意的：
-      · "center" 就是这一版之前的行为（CSS 里本来就写着 background-position: center），
+      · "center" 就是有九宫格之前的行为（CSS 里本来就写着 background-position: center），
         所以老数据、脏数据、有人手改过数据库 —— 最坏的结果也只是"回到原来的观感"，不会变形。
-      · 另外顺手认几个简写（"top" = "center top"），省得写接口、写测试的人踩坑。
+      · 顺带也就挡住了往 CSS 里注入的路子：像 "'; background:url(javascript:alert(1))"
+        这种带分号/括号的串永远匹配不上那两个表达式，只会变成 "center"
+        （tests\\test_texts.py 里有一条断言专门守着它）。
 
     用在哪：get_profile()（首页那三张）和 clean_zone_profile()（分区那两张）读取时各洗一遍，
-    所以**库里存了脏值也不怕** —— 读出来永远是合法的 9 个值之一。
+    入库前（/api/admin/profile、/api/admin/zones）再洗一遍，所以**存进去和读出来都干净**。
     """
-    text = " ".join(str(value or "").strip().lower().split())
-    text = POSITION_ALIASES.get(text, text)
-    return text if text in POSITION_VALUES else POSITION_DEFAULT
+    return position_to_css(value)
 
 
 def clean_texts(raw):
@@ -4233,6 +4315,12 @@ def text_groups_for_admin():
     ★ 为什么把目录发给前端而不是在 admin.html 里手写 78 个输入框：
       一份目录三处用（后台渲染 / 前台取值 / 备份），加一句文案只要在这里加一行；
       写在 HTML 里的话，加一句要改三个文件，迟早对不上。
+
+    ★ 每组还多带两个数（count / customCount），**必须在后端算**：
+      后台要把每组折叠起来，标题上写「① 主页 · 10 句（改过 2 句）」——
+      不展开就知道哪组动过，这是折叠之后最有用的一个信息。
+      这两个数如果放到前端去数，就得先把所有输入框都渲染出来，
+      那折叠就白折了；后端本来就有整份目录，顺手数出来最省事。
     """
     texts = get_texts()
     groups = []
@@ -4253,7 +4341,10 @@ def text_groups_for_admin():
                 "custom": texts[f["key"]] != f["default"],   # 这一句主人改过没有
             })
         groups.append({"id": group["id"], "name": group["name"],
-                       "hint": group.get("hint", ""), "fields": fields})
+                       "hint": group.get("hint", ""), "fields": fields,
+                       # 这一组有几句 / 其中几句被改过（折叠标题上那行字用它）
+                       "count": len(fields),
+                       "customCount": sum(1 for f in fields if f["custom"])})
     return groups
 
 
