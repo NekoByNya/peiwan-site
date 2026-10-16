@@ -19,10 +19,12 @@
 
 import argparse
 import base64
+import hashlib
 import json
 import io
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -178,17 +180,53 @@ def main():
             base_tree = commit.get("tree", {}).get("sha")
 
     # ---------- 3. 上传每个文件（生成 blob） ----------
+    # ★ 2026-10-16 加了两件事，都是被网络逼出来的：
+    #   ① 【跳过没变的文件】——
+    #      之前每次推送都把 48 个文件全传一遍 ✗
+    #      网络一抖（HTTP 400 / 连接被掐）就得从头再来 ✗ 传到最后还是失败 ✗
+    #      现在先看远端每个文件的哈希：和本地一样就不传了 ✓
+    #      → 重试几次之后，剩下要传的越来越少，一定会收敛 ✓
+    #   ② 【每个文件单独重试 3 次】——
+    #      网络抖一下就整个任务失败太浪费 ✓
+    remote_sha = {}
+    if base_tree:
+        code, t = api("GET", "/repos/%s/git/trees/%s?recursive=1" % (args.repo, base_tree), args.token)
+        if code == 200:
+            remote_sha = {x["path"]: x["sha"] for x in t.get("tree", []) if x.get("type") == "blob"}
+
+    def git_blob_sha(data):
+        """和 git 算对象哈希的方式一样 —— 一样就说明这个文件一个字节都没变 ✓"""
+        h = hashlib.sha1()
+        h.update(b"blob %d\x00" % len(data))
+        h.update(data)
+        return h.hexdigest()
+
     tree = []
+    skipped = 0
     for rel, path in items:
         with open(path, "rb") as f:
-            blob = base64.b64encode(f.read()).decode()
-        code, res = api("POST", "/repos/%s/git/blobs" % args.repo, args.token,
-                        {"content": blob, "encoding": "base64"})
+            raw = f.read()
+        local_sha = git_blob_sha(raw)
+        if remote_sha.get(rel) == local_sha:
+            tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": local_sha})
+            skipped += 1
+            continue
+        blob = base64.b64encode(raw).decode()
+        res = None
+        for attempt in range(1, 4):
+            code, res = api("POST", "/repos/%s/git/blobs" % args.repo, args.token,
+                            {"content": blob, "encoding": "base64"})
+            if code in (201, 200):
+                break
+            print("      ! %s 第 %d 次失败（HTTP %s），等 %d 秒重试…" % (rel, attempt, code, attempt * 2))
+            time.sleep(attempt * 2)
         if code not in (201, 200):
             print("[失败] 上传 %s 出错（HTTP %s）：%s" % (rel, code, res.get("message")))
             return 1
         tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": res["sha"]})
         print("      ✓ %s" % rel)
+    if skipped:
+        print("      （%d 个文件上次已经传过了，跳过不重传 ✓）" % skipped)
     print("[3/6] %d 个文件已生成 blob" % len(tree))
 
     # ---------- 4. 建目录树 ----------

@@ -201,17 +201,17 @@ DEFAULT_GALLERY_CATEGORY = "screenshot"
 #   空字符串、或者填得和默认一字不差，都不写进数据库 —— 这样
 #   "没改过的人完全看不出差别"，而且以后默认值改好了，他那边也跟着变好。
 TEXT_GROUPS = [
-    {"id": "home", "name": "① 主页", "hint": "客户打开个人主页（/）时看到的话。", "fields": [
-        {"key": "navServices", "label": "顶部导航：我能做什么（点了跳到服务卡片）", "default": "我能做什么", "max": 20},
+    {"id": "home", "name": "① 主页", "hint": "客户打开个人主页（/）时看到的话。⚠️ 注意：「为什么找我」那一整块，要「资料」页填了信任信号才会出现 —— 那一块的标签后面有标注。", "fields": [
+        {"key": "navServices", "label": "顶部导航：我的服务（点了跳到服务卡片；现在这格写的是「我的服务」）", "default": "我能做什么", "max": 20},
         {"key": "navWhy", "label": "顶部导航：为什么找我", "default": "为什么找我", "max": 20},
         {"key": "navAbout", "label": "顶部导航 + 页脚小链接：关于我", "default": "关于我", "max": 20},
-        {"key": "heroIntro", "label": "首屏大标题下面那行自我介绍（{name} = 你的昵称）", "default": "我是 {name}，下面这些都是我一个人在做。", "max": 120},
-        {"key": "heroCta", "label": "首屏主按钮：看看我能做什么", "default": "看看我能做什么", "max": 20},
-        {"key": "servicesHint", "label": "「我能做什么」右边那行小字", "default": "点开看详情与价目", "max": 40},
-        {"key": "whyTitle", "label": "「为什么找我。」那一段的大标题", "default": "为什么找我。", "max": 40},
-        {"key": "whyHint", "label": "「为什么找我」右边那行小字", "default": "个人接单 · 无中间商", "max": 40},
-        {"key": "aboutTitle", "label": "「关于我」那一块的大标题（{name} = 你的昵称）", "default": "你好，我是 {name}。", "max": 60},
-        {"key": "wechatCardHint", "label": "首页二维码上面那句话", "default": "加我微信，直接聊需求", "max": 40},
+        {"key": "heroIntro", "label": "首屏大标题「Nya」下面那行自我介绍（{name} = 你的昵称）", "default": "我是 {name}，下面这些都是我一个人在做。", "max": 120},
+        {"key": "heroCta", "label": "首屏主按钮（现在这格写的是「看看我有什么服务」）", "default": "看看我能做什么", "max": 20},
+        {"key": "servicesHint", "label": "服务区标题右边那行小字（就是「我的服务都有什么」旁边那句）", "default": "点开看详情与价目", "max": 40},
+        {"key": "whyTitle", "label": "「为什么找我」那一段的大标题 ⚠️ 要「资料」页填了信任信号，这一块才会出现", "default": "为什么找我。", "max": 40},
+        {"key": "whyHint", "label": "「为什么找我」右边那行小字 ⚠️ 同上，要填了信任信号才显示", "default": "个人接单 · 无中间商", "max": 40},
+        {"key": "aboutTitle", "label": "「你好，我是…」那句（页面下方「关于我」那块的标题，{name} = 你的昵称）", "default": "你好，我是 {name}。", "max": 60},
+        {"key": "wechatCardHint", "label": "微信名片框里那句话（首页那个白框里的字，不是页脚那个二维码）", "default": "加我微信，直接聊需求", "max": 40},
     ]},
     {"id": "zone-price", "name": "② 分区页 · 价目", "hint": "每个分区页（/z/xxx）的价格那一段。", "fields": [
         {"key": "zoneCtaBooking", "label": "分区页首屏主按钮（陪玩类）", "default": "看空档时间", "max": 20},
@@ -255,7 +255,7 @@ TEXT_GROUPS = [
         {"key": "faqPanelSummary", "label": "「常见问题」整块要不要也折叠起来（★ 留空 = 不折叠，就是现在这样；填了才折，填的字显示在箭头前面）",
          "default": "", "max": 40, "placeholder": "留空 = 不折叠"},
     ]},
-    {"id": "booking", "name": "③ 下单流程", "hint": "时间表、选模式弹窗、锁定成功弹窗里的话。", "fields": [
+    {"id": "booking", "name": "③ 下单流程", "hint": "时间表、选模式弹窗、锁定成功弹窗里的话。⚠️ 弹窗里的那些（联系方式、备注、锁定成功…）要真的走一遍预约流程才看得到：在时间表上点几个格子 → 点「下一步：选择模式」。", "fields": [
         {"key": "scheduleTitle", "label": "时间表那一段的标题", "default": "你的时间，我来配合。", "max": 40},
         {"key": "scheduleHint", "label": "时间表标题右边那行小字", "default": "每格 1 小时 · 北京时间 · 点击空闲格多选，可跨日期", "max": 60},
         {"key": "sharedNotice", "label": "时间表上面那条灰底提示", "default": "这份时间表是全部服务共用的：不管约哪个游戏，占的都是同一批时段。", "max": 80},
@@ -266,10 +266,10 @@ TEXT_GROUPS = [
         {"key": "slotFree", "label": "格子上写的字：可预约", "default": "可预约", "max": 8},
         {"key": "slotBooking", "label": "格子上写的字：已预约", "default": "已预约", "max": 8},
         {"key": "slotRest", "label": "格子上写的字：休息", "default": "休息", "max": 8},
-        {"key": "slotPast", "label": "格子上写的字：已过去", "default": "已过去", "max": 8},
-        {"key": "slotClosed", "label": "格子上写的字：停接（你关了接单开关时）", "default": "停接", "max": 8},
-        {"key": "slotSelected", "label": "格子被选中时写的字", "default": "已选", "max": 8},
-        {"key": "selectionHint", "label": "选时间区那行提示（{max} = 一次最多几小时）", "default": "先点选想玩的时间，连续或分开都可以（一次最多 {max} 小时）。", "max": 80},
+        {"key": "slotPast", "label": "时间格：已过去（时间已经过了的那些格子）", "default": "已过去", "max": 8},
+        {"key": "slotClosed", "label": "时间格：已停接 ⚠️ 只有你关掉接单开关时才显示", "default": "停接", "max": 8},
+        {"key": "slotSelected", "label": "时间格：被选中时显示的字（你自己点了格子的时候）", "default": "已选", "max": 8},
+        {"key": "selectionHint", "label": "时间表下面那行提示（{max} = 一次最多能选几小时）", "default": "先点选想玩的时间，连续或分开都可以（一次最多 {max} 小时）。", "max": 80},
         {"key": "nextStep", "label": "「下一步：选择模式」按钮", "default": "下一步：选择模式", "max": 20},
         {"key": "modeTitle", "label": "选模式弹窗的标题", "default": "选择模式", "max": 20},
         {"key": "modeHint", "label": "选模式弹窗里那句说明", "default": "选好模式、留下联系方式，点「立即锁定时间」这几个小时就归你了。", "max": 80},
@@ -287,7 +287,7 @@ TEXT_GROUPS = [
         # ⚠️ 这一句的真实默认值是"时间预约成功Ciallo～"：以前 HTML 里写的是另一句，
         #    但 zone.js 在打开弹窗前会把它覆盖掉 —— 客户实际看到的一直是 Ciallo 这句，
         #    所以默认值取"客户现在真正看到的那句"（换个默认值 = 悄悄改了他的话）。
-        {"key": "doneNote", "label": "锁定成功弹窗的第一句（以前是「时间预约成功Ciallo～(∠・ω< )⌒★」）", "default": "时间预约成功Ciallo～(∠・ω< )⌒★", "max": 60},
+        {"key": "doneNote", "label": "锁定成功弹窗里的第一句话", "default": "时间预约成功Ciallo～(∠・ω< )⌒★", "max": 60},
         {"key": "bookedToast", "label": "锁定成功后右下角弹的那句小提示", "default": "时间已锁定，记得加我微信", "max": 40},
         {"key": "doneWechatTitle", "label": "成功弹窗里「下一步：加我微信」", "default": "下一步：加我微信", "max": 30},
         {"key": "wechatAddTail", "label": "加上好友之后要做什么（接在加我方式后面）", "default": "加上之后，把上面的时间发我一下就行。", "max": 60},
@@ -296,7 +296,7 @@ TEXT_GROUPS = [
         {"key": "wechatAddBrowser", "label": "「怎么加我」：在浏览器里打开（长按识别不了二维码）", "default": "若网页无法识别二维码，请直接复制我的微信并添加", "max": 60},
         {"key": "doneCloseHint", "label": "锁定成功弹窗最下面那行小字", "default": "要取消或改时间，微信上跟我说一声就行。", "max": 60},
     ]},
-    {"id": "common", "name": "④ 页脚与通用", "hint": "每个页面都会用到的那些话（页脚、微信号、接单状态…）。", "fields": [
+    {"id": "common", "name": "④ 页脚与通用", "hint": "每个页面都会用到的那些话（页脚、微信号、接单状态…）。⚠️ 其中几句是【分情况】的：在微信里打开 / 在浏览器里打开 / 接单开关开着或关掉，各显示不同的一句 —— 所以可能一次只看得到其中一句，那是正常的。", "fields": [
         {"key": "wechatLabel", "label": "「微信号：」这个前缀（首页、分区页、条款页都用它）", "default": "微信号：", "max": 16},
         {"key": "wechatCopyTip", "label": "微信号旁边的小提示（在微信里打开时）", "default": "长按可复制", "max": 20},
         {"key": "wechatCopyTipBrowser", "label": "微信号旁边的小提示（在浏览器里打开时）", "default": "点一下复制，去微信粘贴", "max": 30},
