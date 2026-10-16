@@ -352,6 +352,32 @@ function allItems() {
   return groups.flatMap((g) => (g.items || []).map((it) => ({ ...it, group: g.name })));
 }
 
+/**
+ * ★ 「这个包含什么 ▾」：价目项那个可选的详细说明（detail）。
+ *
+ * 为什么要有它：客户在主推档位上只看到一行说明，**他不知道多花的钱买到了什么**。
+ * 让他点一下就能看到清单（"精托比普通多做了这几件事"），比把表格撑得很长好得多。
+ *
+ * 三条细节：
+ *  · 没有 detail 的条目**一个字都不多显示**（老数据、没填过的档位完全看不出变化）；
+ *  · 用原生 <details>（能点开、键盘和读屏都认），外层 `.detail` + 里面 `.detail-body`；
+ *  · 正文用 white-space: pre-line 渲染（主人在后台是一行一条敲的清单），
+ *    但**仍然是纯文本**（escapeHtml）—— 文案不认 HTML 是全站的安全底线。
+ *
+ * ⚠️ 类名故意写成两个**字面量**（.detail / .detail-body）而不是用 `${cls}` 拼，
+ *    因为 tests/check_frontend.js 是靠"字符串里有没有出现过这个类名"来查
+ *    "CSS 里有没有没人用的样式"的 —— 拼出来的类名它认不出来，
+ *    于是那两条样式会被报成"未被使用"（第一版就是这样，校验器当场报了）。
+ */
+function detailHtml(it) {
+  const detail = String((it && it.detail) || '').trim();
+  if (!detail) return '';
+  return `<details class="detail">
+    <summary>这个包含什么 ▾</summary>
+    <div class="detail-body">${escapeHtml(detail)}</div>
+  </details>`;
+}
+
 function renderServicePrices() {
   const p = profile();
   const groups = p.priceGroups || [];
@@ -383,6 +409,7 @@ function renderServicePrices() {
       <h3>${escapeHtml(it.name)}</h3>
       <div class="price-text">${escapeHtml(it.price || '价格私聊')}</div>
       <p>${escapeHtml(it.note || '')}</p>
+      ${detailHtml(it)}
     </article>`).join('')
     || `<div class="empty-state">${escapeHtml(tx('priceEmptyService',
       '还没设置主推档位。去后台「分区管理 → 编辑 → 价目表」勾几个 ⭐ 主推。'))}</div>`;
@@ -397,7 +424,8 @@ function renderServicePrices() {
         <thead><tr><th>名称</th><th>价格</th><th>说明</th></tr></thead>
         <tbody>${(g.items || []).map((it) => `
           <tr class="${it.hot ? 'hot' : ''}">
-            <td>${escapeHtml(it.name)}${it.hot ? ' <span class="badge hot">⭐</span>' : ''}</td>
+            <td>${escapeHtml(it.name)}${it.hot ? ' <span class="badge hot">⭐</span>' : ''}${
+              detailHtml(it)}</td>
             <td class="money">${escapeHtml(it.price || '—')}</td>
             <td>${escapeHtml(it.note || '')}</td>
           </tr>`).join('')}</tbody>
@@ -415,9 +443,63 @@ function renderServicePrices() {
   $('#priceSheetHint').hidden = !groups.length;
 }
 
+/* ---------- ★ 服务流程（几步的图）+ 常见问题（折叠块） ----------
+   位置（主人确认过的）：
+     · 服务流程 = **价目表上面**：先知道"要走几步"，再看"每一步多少钱"，
+       客户不会一上来就被价格砸懵。（HTML 上它在价格区那一块的结尾，
+       所以预约制里排在三档价格下面、服务制里排在分组价目表下面 —— 两种都对。）
+     · 常见问题 = **价目表下面**：客户正犹豫的地方，他心里那几个问题就地回答。
+
+   两块内容都是主人自己在后台整条写的（后台「文案」→ 服务流程 / 常见问题），
+   默认值由服务端补齐（state.site.faq / state.site.steps），所以这里不写兜底文案。 */
+
+/** 把 {wechat} 换成微信号（前台的 tx() 只认 {name}/{zone}/{max}，这里补一个） */
+function fillWechat(text) {
+  return String(text || '').replace(/\{wechat\}/g, (state.site && state.site.wechat) || '');
+}
+
+function renderSteps() {
+  const s = (state.site && state.site.steps) || { items: [] };
+  const items = s.items || [];
+  const panel = $('#stepsPanel');
+  if (!panel) return;
+  if (!items.length) {                     // 理论上不会（后端兜底成默认 4 步）
+    panel.hidden = true;
+    return;
+  }
+  $('#stepsTitle').textContent = s.title || '怎么开始';
+  $('#stepsList').innerHTML = items.map((it) => `
+    <li><b>${escapeHtml(it.title || '')}</b>${
+      it.desc ? `<span>${escapeHtml(fillWechat(it.desc))}</span>` : ''}</li>`).join('');
+  panel.hidden = false;
+}
+
+function renderFaq() {
+  const f = (state.site && state.site.faq) || { items: [] };
+  const items = f.items || [];
+  const panel = $('#faqPanel');
+  if (!panel) return;
+  if (!items.length) {
+    panel.hidden = true;
+    return;
+  }
+  $('#faqTitle').textContent = f.title || '常见问题';
+  const sub = $('#faqSubtitle');
+  if (sub) {
+    sub.textContent = f.subtitle || '';
+    sub.hidden = !f.subtitle;
+  }
+  // 每条一个原生 <details>，**全部默认收起**（折叠块的意思：先看到问题，想看了再点开）
+  $('#faqList').innerHTML = items.map((it) => `
+    <details class="faq-item">
+      <summary>${escapeHtml(it.q || '')}</summary>
+      <p class="faq-answer">${escapeHtml(fillWechat(it.a || ''))}</p>
+    </details>`).join('');
+  panel.hidden = false;
+}
+
 /* ---------- 服务承诺 ---------- */
-function renderPromises() {
-  const p = profile();
+function renderPromises() {  const p = profile();
   const booking = (state.zone.kind || 'booking') === 'booking';
   $('#promiseTitle').textContent = booking
     ? tx('promiseTitleBooking', '下单前，聊清楚这几件事')
@@ -764,6 +846,8 @@ async function loadPublic(showToast = false) {
   renderTexts();       // ★ 文案先铺一遍，下面各块再用（顺序无所谓，但先铺更直观）
   renderHero();
   renderPrices();
+  renderSteps();       // ★ 服务流程（主人可能在后台刚改过，重画一遍）
+  renderFaq();         // ★ 常见问题（同上）
   renderPromises();
   if (isBooking()) {
     renderSchedule();
@@ -932,6 +1016,8 @@ function bindEvents() {
   renderTexts();       // ★ 文案（默认值 + 后台改过的）先铺一遍
   renderHero();
   renderPrices();
+  renderSteps();       // ★ 服务流程（价目表那一块里，紧跟价格）
+  renderFaq();         // ★ 常见问题（价目表下面 —— 客户正犹豫的地方）
   renderPromises();
   renderGallery();
   try {

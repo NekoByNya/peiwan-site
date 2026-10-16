@@ -194,9 +194,25 @@ function renderServices() {
     : `<div class="empty-state">${escapeHtml(tx('servicesEmpty', '还没有分区。去后台「分区管理」新建一个，这里就会出现卡片。'))}</div>`;
 }
 
+/* ---------- ★ 服务流程（几步的图）+ 常见问题（折叠块） ----------
+   这两块放在服务卡片下面，位置的意义是：
+     · 服务流程 = "那我怎么开始"（刚看完你能做什么，紧接着就是这个）
+     · 常见问题 = 客户心里那几个"算了不问了"的问题，答案就摆在下面
+   两块的内容都是**主人自己在后台整条写的**（后台 →「文案」→ 服务流程 / 常见问题），
+   默认值由服务端补齐（SITE.faq / SITE.steps），所以这里不用写兜底文案。 */
+
+/** 把 {wechat} 换成微信号（前台的 tx() 只认 {name}/{zone}/{max}，这里补一个）
+    ⚠️ 主页目前没有用到它，但留着：以后你在「文案」里给主页某句话写 {wechat} 时，
+       它才能被换成你的微信号 —— 而且分区页的 zone.js 也用同名函数，两边保持一致。 */
+function fillWechat(text) {
+  return String(text || '').replace(/\{wechat\}/g, SITE.wechat || '');
+}
+
+/* ⚠️ 主页【故意没有】常见问题那一块：问答都是针对具体服务的，
+   客户在主页还没选服务，提前看一整套太多余 ✗
+   每个分区页各有一份（在 static/zone.js 里）—— 那才是对的时机 ✓ */
 /* ---------- 信任信号 ---------- */
-function renderTrust() {
-  const trust = SITE.trust || [];
+function renderTrust() {  const trust = SITE.trust || [];
   const box = $('#trustList');
   $('#whyTitle').textContent = tx('whyTitle', '为什么找我。');
   $('#whyHint').textContent = tx('whyHint', '个人接单 · 无中间商');

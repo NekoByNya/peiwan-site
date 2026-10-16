@@ -141,6 +141,22 @@ function escapeHtml(text) {
   ));
 }
 
+/**
+ * 从文案表里取一句话（和前台 site.js / zone.js 的 tx() 是同一个东西）。
+ *
+ * 后台为什么也需要它：后台里有几句"解释这个功能怎么用"的话（比如密码打码的提示），
+ * 它们也在 app.py 的 TEXT_GROUPS 目录里（第 ⑥ 组），
+ * 所以主人换个说法之后，后台这边要跟着变。
+ * 服务端已经把默认值补齐了（state.texts），第二个参数只是"连文案表都没拿到"时的保险。
+ * {zone} 这类变量用第三个参数传进来（后台这边主要是 {zone}）。
+ */
+function tx(key, fallback, vars) {
+  const value = (state.texts || {})[key];
+  const text = (value === undefined || value === null || value === '') ? (fallback || '') : value;
+  const map = vars || {};
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (map[k] !== undefined ? map[k] : m));
+}
+
 const groupIcon = (name) => GROUP_ICON[name] || '🎯';
 const zoneById = (id) => state.zones.find((z) => z.id === id) || null;
 const currentZone = () => zoneById(state.currentZoneId);
@@ -233,6 +249,8 @@ async function loadAll() {
   state.textGroups = admin.textGroups || [];
   state.textOverrides = admin.textOverrides || {};
   state.terms = admin.terms || { title: '', updated: '', sections: [] };
+  state.faq = admin.faq || { title: '', subtitle: '', items: [] };        // ★ 常见问题
+  state.steps = admin.steps || { title: '', items: [] };                  // ★ 服务流程
   state.positionChoices = admin.positionChoices || [];      // ★ 九宫格的 9 个选项
   state.publicSlots = pub.slots;
   if (!state.date) state.date = midnightOf(pub.serverTime);
@@ -277,6 +295,8 @@ function renderAll() {
   renderDataHint();
   renderTexts();              // ★ 文案标签页（照着目录生成输入框）
   renderTerms();              // ★ 服务条款（标题 + 小节编辑器）
+  renderFaq();                // ★ 常见问题（一条条增删改排序）
+  renderSteps();              // ★ 服务流程（2~6 步）
   renderPosPickers();         // ★ 图片显示位置的九宫格
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
@@ -734,6 +754,60 @@ function contactText(c) {
   return c.contact ? `${label}：${c.contact}` : '（没填联系方式）';
 }
 
+/* ==========================================================================
+   ★ 游戏账号六件事 + 密码打码（主人点名要的两件事）
+   --------------------------------------------------------------------------
+   1. **账号不打码，只有密码打码**。为什么不一样对待：
+      账号（手机号）他经常要看着拨号、拿去搜索，打码了反而碍事；
+      密码是"别人站你身后瞟一眼就能记住"的那种东西，所以默认挡住，
+      点一下小眼睛才显示 —— 防的是身后的人，不是防他自己。
+   2. **默认折叠、不自动展开、刷新后回到打码**：
+      显示状态只存在于这一次渲染的 DOM 里，不写进 state、不写进 localStorage。
+      为什么不记住"我看过哪个客户的密码"：那等于把密码长期摊在屏幕上，
+      下次他打开后台（可能正在跟别人语音）就直接露出来了。
+   3. 「复制密码」**不需要先点显示** —— 复制走的是数据里的原文，
+      不用把明文渲染到页面上就能复制走（少一次"明文出现在屏幕上"的机会）。
+   ========================================================================== */
+
+/** 打码后的显示：••••••（固定 6 个点，不按真实长度 —— 免得从点数猜出密码多长） */
+const PASSWORD_MASK = '••••••';
+
+/**
+ * 游戏账号那一格的 HTML：游戏 / 区服 一行，账号 / 密码 / 角色 / 练度 一行。
+ * 全空就显示一个 —（比显示一堆空标签干净）。
+ *
+ * ⚠️ 练度那一段读的是 `c.gameLevel`，**不是 `c.level`** ——
+ *    `c.level` 是"到期分档"算出来的（expired / today / soon…），
+ *    两个意思挤同一个名字的话，客户列表上"练度"那一行会显示成 "none"。
+ */
+function accountCellHtml(c) {
+  const head = [c.game, c.server].filter(Boolean).join(' · ');
+  const rows = [];
+  if (c.account) rows.push(`账号：${escapeHtml(c.account)}`);
+  if (c.password) {
+    // ⚠️ 明文放在 data-pw 属性里，默认渲染出来的是打码后的 6 个点；
+    //    点小眼睛时 JS 把 textContent 换成 data-pw 的值（不重新拼 HTML）。
+    rows.push(`密码：<span class="pw-value" data-pw="${escapeHtml(c.password)}">${
+      PASSWORD_MASK}</span>
+      <button class="button small ghost pw-toggle" data-pw-toggle="${c.id}"
+              title="显示 / 隐藏密码">👁 显示</button>
+      <button class="button small ghost" data-pw-copy="${c.id}"
+              title="复制密码（不用先显示）">📋 复制</button>`);
+  }
+  if (c.role) rows.push(`角色：${escapeHtml(c.role)}`);
+  if (c.gameLevel) rows.push(`练度：${escapeHtml(c.gameLevel)}`);
+  if (!head && !rows.length) return '—';
+  return (head ? `<strong>${escapeHtml(head)}</strong>` : '')
+    + rows.map((r) => `<p class="acc-row">${r}</p>`).join('');
+}
+
+/** 「客户」页顶部那句提示（文字来自后台「文案」⑥ 后台提示） */
+function renderCustomerPasswordHint() {
+  const el = $('#customerPasswordHint');
+  if (el) el.textContent = tx('adminPasswordMaskHint',
+    '密码默认打码，点小眼睛才显示 —— 防的是别人站你身后看到屏幕。');
+}
+
 /**
  * ★ 催续费话术（想改口气就改这一个函数，改完刷新页面立刻生效）。
  *
@@ -848,13 +922,22 @@ function renderCustomerRemind() {
     : '<div class="empty-state">这周没有要催的，安心打单～</div>';
 }
 
-/** ③ 客户列表的筛选 */
+/**
+ * ③ 客户列表的筛选
+ *
+ * ★ 搜索范围**故意包含**游戏 / 区服 / 账号 / 角色名（但不含密码）：
+ *   主人最常用的动作就是"搜一个手机号 / 角色名，看看是谁、买的哪一档" ——
+ *   这几项以前只能塞在备注里，搜起来全靠缘分。
+ *   密码不进搜索：搜不出密码对他没损失（他都是从列表点「复制」），
+ *   但"搜到一半把明文密码高亮出来"这种事能免则免。
+ */
 function filteredCustomers() {
   const q = state.customerSearch.trim().toLowerCase();
   return state.customers.filter((c) => {
     if (!customerMatchesFilter(c)) return false;
     if (!q) return true;
-    return [c.name, c.contact, c.item, c.zoneName, c.price, c.note]
+    return [c.name, c.contact, c.item, c.zoneName, c.price, c.note,
+            c.game, c.server, c.account, c.role, c.gameLevel]
       .some((v) => String(v || '').toLowerCase().includes(q));
   });
 }
@@ -901,7 +984,7 @@ function renderCustomerList() {
   // 一行一个客户。手机上靠 data-label 变成"标签: 值"，不用横向滚动（见 style.css）
   table.innerHTML = `
     <thead><tr>
-      <th>客户</th><th>联系方式</th><th>服务 / 档位</th><th>金额</th>
+      <th>客户</th><th>联系方式</th><th>服务 / 档位</th><th>游戏 / 区服</th><th>金额</th>
       <th>周期</th><th>剩余</th><th>操作</th>
     </tr></thead>
     <tbody>${items.map((c) => `
@@ -913,6 +996,7 @@ function renderCustomerList() {
         <td data-label="联系方式">${escapeHtml(contactText(c))}</td>
         <td data-label="服务 / 档位">${escapeHtml([c.zoneName, c.item].filter(Boolean).join(' · ')
           || '—')}</td>
+        <td data-label="游戏 / 区服" class="account-cell">${accountCellHtml(c)}</td>
         <td data-label="金额" class="money">${escapeHtml(c.price || '—')}</td>
         <td data-label="周期">${escapeHtml(c.start_date ? cnDate(c.start_date) : '—')} → ${
           escapeHtml(c.end_date ? cnDate(c.end_date) : '长期')}</td>
@@ -931,6 +1015,7 @@ function renderCustomers() {
   if (!$('#customerStats')) return;
   renderCustomerStats();
   renderCustomerRemind();
+  renderCustomerPasswordHint();     // ★ 「密码默认打码…」那句提示（文案可改）
   renderCustomerList();
   fillCustomerZonePicker();
 }
@@ -977,6 +1062,16 @@ function openCustomerModal(customer = null, prefill = null) {
   $('#cStart').value = (customer && customer.start_date) || state.customerToday || '';
   $('#cEnd').value = (customer && customer.end_date) || '';
   $('#cStatus').value = (customer && customer.status) || 'active';
+  // ★ 游戏账号六件事（老档案里没有这几个字段 → ''，不影响）
+  $('#cGame').value = (customer && customer.game) || '';
+  $('#cServer').value = (customer && customer.server) || '';
+  $('#cAccount').value = (customer && customer.account) || '';
+  // ⚠️ 编辑时密码框里放的是**明文**（就是要让他能改、能核对）；
+  //    打码只在"列表显示"那一层做 —— 存进库里的永远是原文，
+  //    不然列表那个「📋 复制密码」就复制不出东西了。
+  $('#cPassword').value = (customer && customer.password) || '';
+  $('#cRole').value = (customer && customer.role) || '';
+  $('#cLevel').value = (customer && customer.gameLevel) || '';
   $('#cNote').value = (customer && customer.note) || ((prefill && prefill.note) || '');
   $('#cFormState').textContent = '';
   $('#cFormState').className = 'hint';
@@ -1018,6 +1113,14 @@ async function saveCustomerForm() {
         end_date: $('#cEnd').value,
         status: $('#cStatus').value,
         note: $('#cNote').value.trim(),
+        // ★ 游戏账号六件事（也全是自由文本；密码发的是明文，后端原样存）
+        //   ⚠️ 练度这一项对外叫 gameLevel（不是 level）—— level 是"到期分档"用的名字
+        game: $('#cGame').value.trim(),
+        server: $('#cServer').value.trim(),
+        account: $('#cAccount').value.trim(),
+        password: $('#cPassword').value.trim(),
+        role: $('#cRole').value.trim(),
+        gameLevel: $('#cLevel').value.trim(),
       }),
     });
     applyCustomerResult(data);
@@ -1219,6 +1322,26 @@ async function customerAction(e) {
   }
   const copy = e.target.closest('[data-cus-copy]');
   if (copy) return copyRenewMessage(copy.dataset.cusCopy);
+  // ★ 密码的小眼睛：只改**这一个** span 的文字，别的行、别的客户都不动 ✓
+  //   （主人明确要求：切换只影响当前这一条，刷新后又回到打码）
+  const eye = e.target.closest('[data-pw-toggle]');
+  if (eye) {
+    const span = eye.closest('td').querySelector('.pw-value');
+    if (!span) return;
+    const shown = span.dataset.shown === '1';
+    span.textContent = shown ? PASSWORD_MASK : (span.dataset.pw || '');
+    span.dataset.shown = shown ? '0' : '1';
+    span.classList.toggle('revealed', !shown);
+    eye.textContent = shown ? '👁 显示' : '🙈 隐藏';
+    return;
+  }
+  // ★ 复制密码：**不用先点显示** —— 直接从 data-pw 拿原文去复制，
+  //   少一次"明文出现在屏幕上"的机会（站着的人看不到，剪贴板里已经有了）
+  const pwCopy = e.target.closest('[data-pw-copy]');
+  if (pwCopy) {
+    const span = pwCopy.closest('td').querySelector('.pw-value');
+    return copyText((span && span.dataset.pw) || '', '密码已复制');
+  }
   const del = e.target.closest('[data-cus-del]');
   if (del) return deleteCustomerFlow(del.dataset.cusDel);
 }
@@ -1879,6 +2002,15 @@ function renderGroupEditor() {
               title="放进「主推档位」（最多 3 个）">${featured.includes(it.id) ? '已主推' : '主推'}</button>
             <button class="button small danger" data-del-item="${gi}-${ii}">🗑</button>
           </div>
+        </div>
+        <!-- ★ 详细说明（选填）：客户点开「这个包含什么 ▾」才看到的那段。
+             为什么要这个字段：一行「说明」装不下"多花的钱买到了什么"——
+             客户看到三档托管只差一个价格，根本不知道差别在哪。
+             多行文本，用 textarea 而不是 input（他要一条一条写清单）。 -->
+        <div class="field item-detail-field">
+          <label for="idet-${gi}-${ii}">详细说明（选填，客户点开「这个包含什么」才看到）</label>
+          <textarea id="idet-${gi}-${ii}" data-item="${gi}-${ii}" data-ikey="detail"
+                    maxlength="1500" placeholder="一条一行，例如：&#10;本月活动全刻章&#10;肉鸽每月至少 20 级&#10;计划练度制定">${escapeHtml(it.detail || '')}</textarea>
         </div>`).join('') || '<p class="hint">这一组还没有项目，点下面的「📋 批量粘贴导入」最快。</p>'}
       <button class="button ghost small" data-add-item="${gi}">+ 增加一项</button>
     </div>`).join('') || '<div class="empty-state">还没有价目表。先「+ 增加一组」，再用「📋 批量粘贴导入」把整张价目表贴进来。</div>';
@@ -1907,6 +2039,7 @@ function collectGroups() {
         name: get('name').trim(),
         price: get('price').trim(),     // ★ 自由文本，原样保留（不做数字转换）
         note: get('note').trim(),
+        detail: get('detail').trim(),   // ★ 多行详细说明（客户点开「这个包含什么」才看到）
         hot: !!it.hot,
       };
     }).filter((it) => it.name);
@@ -2909,6 +3042,285 @@ $('#resetTerms').addEventListener('click', async () => {
 });
 
 /* ==========================================================================
+   ★ 常见问题 + 服务流程（后台「文案」页里的两块）
+   --------------------------------------------------------------------------
+   这两块的交互和「服务条款」**一模一样**（增 / 删 / ↑↓ 排序），所以我照它写了一份：
+     · collectXxxFromForm()  把编辑框里现在的内容收回内存
+     · renderXxx()           按内存重画（↑↓ / 删除 / 新增之前必须先 collect，否则刚打的字会丢）
+     · save / reset          两个按钮各一个接口（/api/admin/faq、/api/admin/steps）
+   为什么要在前端也维护一份 state.faq / state.steps：
+     ↑↓ 和删除都是"先改内存、再重画"，没有它就得每次都发一趟接口（慢，而且中途失败很难看）。
+   ========================================================================== */
+
+/** 画「常见问题」：一个标题 + 一条条（问题 / 答案），右边 ↑↓ 和删除 */
+function renderFaq() {
+  const f = state.faq || {};
+  const t = $('#faqTitleInput');
+  if (!t) return;
+  t.value = f.title || '常见问题';
+  const sub = $('#faqSubtitleInput');
+  if (sub) sub.value = f.subtitle || '';
+  const items = f.items || [];
+  const box = $('#faqItems');
+  box.innerHTML = items.map((it, i) => `
+    <div class="terms-row" data-index="${i}">
+      <div class="field">
+        <label for="fq-${i}">第 ${i + 1} 条 · 问题</label>
+        <input id="fq-${i}" data-faq-q="${i}" maxlength="80" value="${escapeHtml(it.q || '')}"
+               placeholder="例如：账号安全吗？你会动我的东西吗？">
+      </div>
+      <div class="field">
+        <label for="fa-${i}">答案（空一行 = 另起一段；单独换行就是换行）</label>
+        <textarea id="fa-${i}" data-faq-a="${i}" maxlength="1500"
+                  placeholder="用你自己的口气说 —— 客户看得出来哪句是真话">${escapeHtml(it.a || '')}</textarea>
+      </div>
+      <div class="row-actions">
+        <button class="button small ghost" data-faq-up="${i}" ${i === 0 ? 'disabled' : ''}>↑ 上移</button>
+        <button class="button small ghost" data-faq-down="${i}"
+                ${i === items.length - 1 ? 'disabled' : ''}>↓ 下移</button>
+        <button class="button small danger" data-faq-del="${i}">🗑 删除这一条</button>
+      </div>
+    </div>`).join('')
+    || '<div class="empty-state">现在一条都没有。点下面「+ 新增一条」，或者点「恢复默认 8 条」。</div>';
+  const stateEl = $('#faqState');
+  if (stateEl && !stateEl.textContent) {
+    stateEl.textContent = `现在有 ${items.length} 条（最多 ${30} 条）`;
+  }
+}
+
+/** 把「常见问题」编辑框里现在的内容收回内存 */
+function collectFaqFromForm() {
+  const f = { ...(state.faq || {}) };
+  const t = $('#faqTitleInput');
+  const sub = $('#faqSubtitleInput');
+  f.title = t ? t.value.trim() : (f.title || '');
+  f.subtitle = sub ? sub.value.trim() : (f.subtitle || '');
+  f.items = $$('[data-faq-q]').map((el) => {
+    const i = el.dataset.faqQ;
+    const a = $(`[data-faq-a="${i}"]`);
+    return { q: el.value, a: a ? a.value : '' };
+  });
+  return f;
+}
+
+function applyFaqResult(data) {
+  if (data.faq) state.faq = data.faq;
+  renderFaq();
+}
+
+async function saveFaqForm() {
+  const form = collectFaqFromForm();
+  const el = $('#faqState');
+  if (!form.title) {
+    el.className = 'hint error';
+    el.textContent = '常见问题的小标题不能是空的。';
+    return toast('小标题不能是空的', true);
+  }
+  const btn = $('#saveFaq');
+  btn.disabled = true;
+  el.className = 'hint';
+  el.textContent = '正在保存…';
+  try {
+    const data = await api('/api/admin/faq', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'save', title: form.title,
+                             subtitle: form.subtitle, items: form.items }),
+    });
+    applyFaqResult(data);
+    $('#faqState').className = 'hint ok';
+    $('#faqState').textContent = data.dropped
+      ? `已保存（有 ${data.dropped} 条是空的，已经忽略）—— 客户刷新页面就看到了`
+      : '已保存 —— 客户刷新页面就看到了';
+    toast('常见问题已保存');
+  } catch (err) {
+    $('#faqState').className = 'hint error';
+    $('#faqState').textContent = err.message;
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** 画「服务流程」：一个标题 + 2~6 步 */
+function renderSteps() {
+  const s = state.steps || {};
+  const t = $('#stepsTitleInput');
+  if (!t) return;
+  t.value = s.title || '怎么开始';
+  const items = s.items || [];
+  $('#stepsItems').innerHTML = items.map((it, i) => `
+    <div class="terms-row" data-index="${i}">
+      <div class="field">
+        <label for="st-${i}">第 ${i + 1} 步 · 一句话</label>
+        <input id="st-${i}" data-step-title="${i}" maxlength="30"
+               value="${escapeHtml(it.title || '')}" placeholder="例如：挑时间 / 说需求">
+      </div>
+      <div class="field">
+        <label for="sd-${i}">这一步做什么（客户照着做就知道下一步）</label>
+        <textarea id="sd-${i}" data-step-desc="${i}" maxlength="200"
+                  style="min-height:70px">${escapeHtml(it.desc || '')}</textarea>
+      </div>
+      <div class="row-actions">
+        <button class="button small ghost" data-step-up="${i}" ${i === 0 ? 'disabled' : ''}>↑ 上移</button>
+        <button class="button small ghost" data-step-down="${i}"
+                ${i === items.length - 1 ? 'disabled' : ''}>↓ 下移</button>
+        <button class="button small danger" data-step-del="${i}">🗑 删除这一步</button>
+      </div>
+    </div>`).join('')
+    || '<div class="empty-state">现在一步都没有。点下面「+ 新增一步」，或者点「恢复默认 4 步」。</div>';
+  const stateEl = $('#stepsState');
+  if (stateEl && !stateEl.textContent) {
+    stateEl.textContent = `现在有 ${items.length} 步（要 2~6 步）`;
+  }
+}
+
+function collectStepsFromForm() {
+  const s = { ...(state.steps || {}) };
+  const t = $('#stepsTitleInput');
+  s.title = t ? t.value.trim() : (s.title || '');
+  s.items = $$('[data-step-title]').map((el) => {
+    const i = el.dataset.stepTitle;
+    const d = $(`[data-step-desc="${i}"]`);
+    return { title: el.value, desc: d ? d.value : '' };
+  });
+  return s;
+}
+
+function applyStepsResult(data) {
+  if (data.steps) state.steps = data.steps;
+  renderSteps();
+}
+
+async function saveStepsForm() {
+  const form = collectStepsFromForm();
+  const el = $('#stepsState');
+  if (!form.title) {
+    el.className = 'hint error';
+    el.textContent = '服务流程的小标题不能是空的。';
+    return toast('小标题不能是空的', true);
+  }
+  const btn = $('#saveSteps');
+  btn.disabled = true;
+  el.className = 'hint';
+  el.textContent = '正在保存…';
+  try {
+    const data = await api('/api/admin/steps', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'save', title: form.title, items: form.items }),
+    });
+    applyStepsResult(data);
+    $('#stepsState').className = 'hint ok';
+    $('#stepsState').textContent = data.tip
+      ? `已保存 —— ${data.tip}`
+      : `已保存 ${(data.steps || {}).items ? data.steps.items.length : 0} 步 —— 客户刷新页面就看到了`;
+    toast('服务流程已保存');
+  } catch (err) {
+    $('#stepsState').className = 'hint error';
+    $('#stepsState').textContent = err.message;
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('#saveFaq').addEventListener('click', saveFaqForm);
+$('#faqItems').addEventListener('click', (e) => {
+  const up = e.target.closest('[data-faq-up]');
+  const down = e.target.closest('[data-faq-down]');
+  const del = e.target.closest('[data-faq-del]');
+  if (!up && !down && !del) return;
+  const form = collectFaqFromForm();
+  const items = form.items || [];
+  if (up || down) {
+    const i = Number((up || down).dataset[up ? 'faqUp' : 'faqDown']);
+    const j = up ? i - 1 : i + 1;
+    if (j < 0 || j >= items.length) return;
+    const tmp = items[i];
+    items[i] = items[j];
+    items[j] = tmp;
+  } else {
+    const i = Number(del.dataset.faqDel);
+    if (!confirm(`删除第 ${i + 1} 条？\n（点「保存常见问题」之后客户那边才会变）`)) return;
+    items.splice(i, 1);
+  }
+  state.faq = { ...form, items };
+  renderFaq();
+});
+$('#addFaqItem').addEventListener('click', () => {
+  const form = collectFaqFromForm();
+  form.items = (form.items || []).concat([{ q: '', a: '' }]);
+  state.faq = form;
+  renderFaq();
+  toast('新增了一条，填好问题和答案再点保存');
+});
+$('#resetFaq').addEventListener('click', async () => {
+  if (!confirm('恢复默认的 8 条常见问题？\n（你自己写的那些会被换成出厂那份）')) return;
+  const el = $('#faqState');
+  el.className = 'hint';
+  el.textContent = '正在恢复…';
+  try {
+    const data = await api('/api/admin/faq', { method: 'POST', body: JSON.stringify({ action: 'reset' }) });
+    applyFaqResult(data);
+    $('#faqState').className = 'hint ok';
+    $('#faqState').textContent = '已恢复默认 8 条';
+    toast('已恢复默认常见问题');
+  } catch (err) {
+    el.className = 'hint error';
+    el.textContent = err.message;
+    toast(err.message, true);
+  }
+});
+
+$('#saveSteps').addEventListener('click', saveStepsForm);
+$('#stepsItems').addEventListener('click', (e) => {
+  const up = e.target.closest('[data-step-up]');
+  const down = e.target.closest('[data-step-down]');
+  const del = e.target.closest('[data-step-del]');
+  if (!up && !down && !del) return;
+  const form = collectStepsFromForm();
+  const items = form.items || [];
+  if (up || down) {
+    const i = Number((up || down).dataset[up ? 'stepUp' : 'stepDown']);
+    const j = up ? i - 1 : i + 1;
+    if (j < 0 || j >= items.length) return;
+    const tmp = items[i];
+    items[i] = items[j];
+    items[j] = tmp;
+  } else {
+    const i = Number(del.dataset.stepDel);
+    if (!confirm(`删除第 ${i + 1} 步？\n（点「保存服务流程」之后客户那边才会变）`)) return;
+    items.splice(i, 1);
+  }
+  state.steps = { ...form, items };
+  renderSteps();
+});
+$('#addStepItem').addEventListener('click', () => {
+  const form = collectStepsFromForm();
+  if ((form.items || []).length >= 6) return toast('最多 6 步 —— 再多客户就不看了', true);
+  form.items = (form.items || []).concat([{ title: '', desc: '' }]);
+  state.steps = form;
+  renderSteps();
+  toast('新增了一步，填好再点保存');
+});
+$('#resetSteps').addEventListener('click', async () => {
+  if (!confirm('恢复默认的 4 步流程？\n（你自己写的那几步会被换成出厂那份）')) return;
+  const el = $('#stepsState');
+  el.className = 'hint';
+  el.textContent = '正在恢复…';
+  try {
+    const data = await api('/api/admin/steps', { method: 'POST', body: JSON.stringify({ action: 'reset' }) });
+    applyStepsResult(data);
+    $('#stepsState').className = 'hint ok';
+    $('#stepsState').textContent = '已恢复默认 4 步';
+    toast('已恢复默认服务流程');
+  } catch (err) {
+    el.className = 'hint error';
+    el.textContent = err.message;
+    toast(err.message, true);
+  }
+});
+
+/* ==========================================================================
    「资料与报价」的事件
    ========================================================================== */
 
@@ -3034,7 +3446,8 @@ $('#groupEditor').addEventListener('click', (e) => {
     groups[gi].items.splice(ii, 1);
   } else if (addItem) {
     const gi = Number(addItem.dataset.addItem);
-    groups[gi].items.push({ id: `i${Date.now()}`, name: '新项目', price: '', note: '', hot: false });
+    groups[gi].items.push({ id: `i${Date.now()}`, name: '新项目', price: '', note: '',
+                            detail: '', hot: false });
   } else if (hot) {
     const [gi, ii] = hot.dataset.hot.split('-').map(Number);
     groups[gi].items[ii].hot = hot.dataset.value === '1';
@@ -3477,12 +3890,16 @@ $('#importBtn').addEventListener('click', async () => {
     const payments = (backup.payments || []).length;
     const texts = Object.keys(backup.texts || {}).length;
     const terms = ((backup.terms || {}).sections || []).length;
+    const faq = ((backup.faq || {}).items || []).length;
+    const steps = ((backup.steps || {}).items || []).length;
     if (!confirm(`将要恢复：\n· 预约/休息时段 ${locks} 条\n· 固定休息规则 ${rules} 条\n`
       + `· 分区 ${zones} 个（含价格与图片）\n· 展示墙 ${gallery} 条\n`
       + `· 客户档案 ${customers} 位${backup.customers ? '' : '（这份老备份里没有客户，你现在的客户档案会原样保留）'}\n`
       + `· 收入流水 ${payments} 笔${backup.payments ? '' : '（这份老备份里没有收入流水，你现在记的账会原样保留）'}\n`
       + `· 文案 ${texts} 句${backup.texts ? '' : '（这份老备份里没有文案，你现在改过的话会原样保留）'}\n`
-      + `· 服务条款 ${terms} 节${backup.terms ? '' : '（这份老备份里没有条款，你现在那份会原样保留）'}\n\n`
+      + `· 服务条款 ${terms} 节${backup.terms ? '' : '（这份老备份里没有条款，你现在那份会原样保留）'}\n`
+      + `· 常见问题 ${faq} 条${backup.faq ? '' : '（这份老备份里没有常见问题，你现在写的会原样保留）'}\n`
+      + `· 服务流程 ${steps} 步${backup.steps ? '' : '（这份老备份里没有服务流程，你现在那份会原样保留）'}\n\n`
       + `会覆盖现在的全部数据，确定吗？`)) return;
 
     const data = await api('/api/admin/import', { method: 'POST', body: JSON.stringify({ backup }) });
@@ -3502,6 +3919,9 @@ $('#importBtn').addEventListener('click', async () => {
     if (data.texts) state.texts = data.texts;
     if (data.textOverrides) state.textOverrides = data.textOverrides;
     if (data.terms) state.terms = data.terms;
+    // ★ 常见问题 / 服务流程也跟着恢复（老备份没带的话，后端一条都不动）
+    if (data.faq) state.faq = data.faq;
+    if (data.steps) state.steps = data.steps;
     if (!zoneById(state.currentZoneId)) state.currentZoneId = state.zones.length ? state.zones[0].id : '';
     if (!zoneById(state.galleryZoneId)) state.galleryZoneId = state.currentZoneId;
     state.batch.clear();
@@ -3511,7 +3931,8 @@ $('#importBtn').addEventListener('click', async () => {
       `已恢复：时段 ${data.summary.locks} 条、规则 ${data.summary.rules} 条、`
       + `分区 ${data.summary.zones || 0} 个、展示 ${data.summary.gallery} 条、`
       + `客户 ${data.summary.customers || 0} 位、收入 ${data.summary.payments || 0} 笔、`
-      + `文案 ${data.summary.texts || 0} 句、条款 ${data.summary.terms || 0} 节`
+      + `文案 ${data.summary.texts || 0} 句、条款 ${data.summary.terms || 0} 节、`
+      + `常见问题 ${data.summary.faq || 0} 条、流程 ${data.summary.steps || 0} 步`
       + `（含图片 ${data.summary.images} 张）`;
     $('#importState').className = 'hint ok';
     toast('备份已恢复');

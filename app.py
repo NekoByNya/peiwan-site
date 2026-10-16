@@ -299,6 +299,16 @@ TEXT_GROUPS = [
         {"key": "promiseEmptyService", "label": "服务制分区没填服务说明时", "default": "还没有填写服务说明，去后台这个分区的资料里补上。", "max": 60},
         {"key": "wechatEmpty", "label": "后台还没填微信号时的占位", "default": "（还没设置微信号）", "max": 20},
     ]},
+    # ★ 第六组：只在**后台**出现的提示语（客户看不到）。
+    #   为什么要放进来而不是写死在 admin.html 里：主人的要求是"客户能看到的每一句话都能改"，
+    #   后台这些提示虽然客户看不到，但它们是"解释这个功能怎么用"的话，
+    #   主人想换个说法（比如把"密码"改成"二级密码"）也该能改 —— 而且统一走 TEXT_GROUPS，
+    #   加一句话仍然只要加一行，不用碰 HTML。
+    #   （它们跟着 site_summary() 的 texts 一起下发，公开接口里多几句后台提示是无害的：
+    #     那本来就是"这个网站怎么用"的说明，不含任何客户资料。）
+    {"id": "admin", "name": "⑥ 后台提示（客户看不到）", "hint": "这些只出现在你自己的管理后台里，客户永远看不到；不影响前台，看着改就行。", "fields": [
+        {"key": "adminPasswordMaskHint", "label": "「客户」页顶部那句密码提示", "default": "密码默认打码，点小眼睛才显示 —— 防的是别人站你身后看到屏幕。", "max": 80},
+    ]},
 ]
 
 # 拍平出来的两份表：key → 默认那句话 / key → 长度上限
@@ -419,6 +429,103 @@ DEFAULT_TERMS = {
     ],
 }
 
+# ============================================================================
+# ★ 常见问题（store key='faq'）—— 客户"正犹豫"的那一刻，把该说的话放在他眼前
+#
+#   为什么要有它（也为什么不做成一个独立页面）：客户在价目表那里犹豫的时候，
+#   心里那几个问题（安全吗 / 会动我东西吗 / 打不完怎么算 / 能退吗）没人回答，他就划走了。
+#   做成**折叠块**贴在价目表下面，他顺手点一下就能看到答案；
+#   做成单独一页的话，犹豫的人根本不会去点。
+#
+#   结构：{"title": 标题, "subtitle": 副标题, "items": [{"q": 问题, "a": 答案}, …]}
+#   ★ 后台可以整条增删改、↑↓ 排序（后台 →「文案」→「常见问题」，写法照「服务条款」那一块）。
+#   ★ 默认内容按主人定的 8 条写（语气和站子一致：实在、口语、不官方）。
+FAQ_STORE_KEY = "faq"
+FAQ_TITLE_MAX = 40               # 标题
+FAQ_SUBTITLE_MAX = 60            # 副标题（标题右边那行小字）
+FAQ_Q_MAX = 80                   # 一个问题
+FAQ_A_MAX = 1500                 # 一个答案（够写一大段了）
+FAQ_ITEM_MAX = 30                # 最多几条（再多就不是 FAQ 是说明书了）
+
+DEFAULT_FAQ = {
+    "title": "常见问题",
+    "subtitle": "点开看答案，没写到的直接微信问我",
+    "items": [
+        {"q": "账号安全吗？你会动我的东西吗？",
+         "a": "只做我们说好的那件事，别的一律不碰。\n"
+              "不改你的密码、不动你的绑定手机和邮箱、不把你的账号信息告诉任何人。\n"
+              "代肝这种要登录的，做多少、什么时候做，我们事先说清楚；\n"
+              "做完你自己改一次密码，这最稳妥（别嫌麻烦）。\n\n"
+              "进度我可以截图或录屏给你看，包月的按约定返图。"},
+        {"q": "需要我提供什么？（哪种登录方式、要不要验证码）",
+         "a": "先说清楚：账号和密码请你自己保管 —— 我这边只在你授权的那段时间里按约定操作。\n"
+              "需要我登录的（代肝），方式你挑：\n\n"
+              "· 你方便的时候把账号密码发我，我做完你改密码；\n"
+              "· 或者你远程扫码 / 发验证码，我上号的时候你在旁边；\n"
+              "· 陪玩不用给账号，到点你上线、我加你好友就行。\n\n"
+              "具体用哪种，加微信聊一句就定了。"},
+        {"q": "没打完 / 打不完怎么算？",
+         "a": "按实际做掉的部分算，剩下的一分不收，或者顺延到你有空的时候。\n"
+              "我自己有事耽搁的（生病、设备坏了、临时被叫走），我会第一时间告诉你，\n"
+              "把这段时间补回来 —— 那是我的问题，不算在你头上。\n\n"
+              "游戏那边维护、掉线这种谁都控制不了的，我们约个时间顺延。"},
+        {"q": "能退款吗？什么时候付钱？",
+         "a": "能。还没开始做就退全款；做了一部分就按做过的算，剩下的退给你。\n"
+              "网站本身不收钱，付钱只有一种方式：微信上说好，你直接转给我（或者走闲鱼下单）。\n\n"
+              "什么时候付都行 —— 开工前付、或者这次服务结束后付，你自己挑，我不催。"},
+        {"q": "多久能打完？要排队吗？",
+         "a": "看档位和当时的单量。陪玩是约时间，约上了就一定是你的；\n"
+              "代肝 / 剪辑这种是排队做的，一般会先告诉你大概什么时候能做完。\n\n"
+              "急的话直接微信说，我看看能不能往前插一插；排不进去我也会直说，不吊着你。"},
+        {"q": "能指定时间吗？临时有事怎么办？",
+         "a": "能。陪玩就是在页面上自己挑时段，挑好了那几个小时就归你，别人约不到。\n\n"
+              "临时有事：提前 2 小时在微信上跟我说一声就行，那几格我放回去，你可以重新选。\n"
+              "提前说是为了别让那段时间白空着 —— 你说一声，我这边完全没损失。"},
+        {"q": "你会用外挂或者脚本吗？",
+         "a": "不会，一次都不会。\n"
+              "不用外挂、不用脚本、不做任何违反游戏规则的操作 —— 这条没有例外。\n"
+              "我做的是「人替你把那些重复的事做掉」，不是「让机器替你违规」。\n\n"
+              "如果你发现我用了，这一单不收钱，随便你说。"},
+        {"q": "服务结束后我需要做什么？",
+         "a": "就一件事：改一次密码（代肝这种给过密码的）。\n"
+              "顺便看一眼进度对不对得上，有不对的地方当场跟我说，我给你补。\n\n"
+              "觉得还行的话，帮我留个评价或者截个图（展示墙上的老板评价就是这么来的）；\n"
+              "觉得哪里不舒服也直接讲，比你不吭声然后不来了强。"},
+    ],
+}
+
+# ============================================================================
+# ★ 服务流程（store key='steps'）—— 客户"不知道下一步干什么"的时候给他一张地图
+#
+#   为什么做成"几步"的图：客户第一次来，最怕的是"我点一下会发生什么"。
+#   把 4 步写清楚（挑时间 → 加微信 → 我确认 → 开始服务），
+#   他就知道"点完不是结束，还有人在后面接住"。
+#
+#   结构：{"title": 标题, "items": [{"title": 第几步, "desc": 这一步做什么}, …]}
+#   ★ **步数是可改的**：后台能增删（2~6 步）。为什么要卡上限下限：
+#     1 步不成"流程"；超过 6 步客户就不看了（他自己接单也没那么复杂）。
+#   ★ 编号圆圈复用样式表里现成的 .promises（01 / 02 / 03 那种圆圈数字）。
+STEPS_STORE_KEY = "steps"
+STEPS_TITLE_MAX = 40
+STEPS_ITEM_TITLE_MAX = 30
+STEPS_ITEM_DESC_MAX = 200
+STEPS_ITEM_MIN = 2               # 最少几步
+STEPS_ITEM_MAX = 6               # 最多几步
+
+DEFAULT_STEPS = {
+    "title": "怎么开始",
+    "items": [
+        {"title": "挑时间 / 说需求",
+         "desc": "陪玩：在上面选好时段。代肝：说清是哪个游戏、要哪一档。"},
+        {"title": "加我微信",
+         "desc": "页面上的微信号点一下就能复制。加上之后把你要的那一项发我一下。"},
+        {"title": "我确认",
+         "desc": "我加你、跟你核对细节（时间、内容、价钱），这一单才算定下来。"},
+        {"title": "开始服务",
+         "desc": "按约定的时间开工，进度随时问我，做完给你看结果。"},
+    ],
+}
+
 # 分区资料里"允许出现"的字段（保存时按这份白名单清洗，避免奇怪的键越存越多）
 ZONE_TEXT_KEYS = {
     "game": 30,            # 游戏名 / 服务名（预约文案里要用："想约守望先锋 PC 端陪玩"）
@@ -475,6 +582,41 @@ STARTER_ZONE_PROMISES = [
     "优先提供愉快的陪伴体验，尽力协助撤离；每局具有随机性，不承诺百分百撤离。",
     "设备无问题，可随时视频或截图验证。",
 ]
+
+# ★ 「详细说明」的示例内容（priceGroups[].items[].detail）。
+#
+#   为什么要在代码里放一份示例：客户看到三个托管档位只差一个价格，
+#   他**不知道多花的钱买到了什么**。这一段就是回答那个问题的清单。
+#   主人可以在后台「报价」页每一档下面那个多行框里改 ——
+#   这里是"起手的样板"，不是写死的规则。
+#
+#   怎么用：后台「报价 → 📋 批量粘贴导入」现在也认"第 4 段 = 详细说明"
+#   （一行：名称 | 价格 | 说明 | 详细说明，详细说明里用 \n 换行），
+#   或者直接在建好档位之后，到每一项下面的「详细说明（选填）」框里粘一份。
+#   下面这份是按"明日方舟三个托管档"的真实差别整理的（精托比普通多做了这些事）。
+STARTER_DETAIL_NORMAL = (
+    "每天：清体力、日常任务、周常任务\n"
+    "基建：换班、收菜、制造站排布\n"
+    "信用商店：按需兑换\n"
+    "每周返图一次（进度截图）\n"
+    "月卡：包含在上面，不额外收费"
+)
+STARTER_DETAIL_HALF = (
+    "包含「普通托管」的全部内容，另外加：\n"
+    "活动关卡代打（当期活动能打的都打）\n"
+    "剿灭作战（每周打满）\n"
+    "危机合约：帮你打到保底分\n"
+    "每周返图两次"
+)
+STARTER_DETAIL_FULL = (
+    "包含「半精托管」的全部内容，另外加：\n"
+    "本月活动全刻章（活动章拿满）\n"
+    "集成战略 / 肉鸽：每月至少 20 级\n"
+    "计划练度制定：帮你排「先练谁、练到几级」\n"
+    "保全派驻：每月按时打满\n"
+    "信赖替换：帮你把信赖没满的干员练满\n"
+    "每天返图，进度你随时问"
+)
 
 # 分区 id 的格式：英文小写字母/数字开头，后面可以跟小写字母/数字/连字符，最长 31 位。
 # 它就是要发给客户的网址的一部分（/z/delta），所以不允许中文、大写、下划线。
@@ -713,6 +855,22 @@ CREATE TABLE IF NOT EXISTS customers (          -- ★ 客户档案 + 到期提�
     end_date     TEXT DEFAULT '',               -- 到期日期 "YYYY-MM-DD"；★空 = 一次性/长期，不算到期
     status       TEXT DEFAULT 'active',         -- active 进行中 / paused 已暂停 / ended 已结束
     note         TEXT DEFAULT '',               -- 备注（账号情况、特殊要求、返图时间…）
+    -- ★ 游戏账号（代肝要登录客户账号，这几项以前只能塞在备注里，翻起来很费劲）：
+    --   ⚠️ 这一批是**客户隐私**，只在后台出现，`site_summary()` 和 `/api/public`
+    --      一个字都不能带（tests\test_profile_fields.py 有断言守着）。
+    --   ⚠️ `game` 和分区资料里的 `profile.game` 不是一回事：那个是"这个分区卖什么游戏"，
+    --      这个是"这位客户的账号在哪个游戏"（他可能在同一个分区买过好几个游戏）。
+    --   ⚠️ 练度那一列必须叫 `game_level`，**不能叫 `level`** ——
+    --      `customers.level` 这个名字早就有主了（到期分档算出来的 expired/today/soon…，
+    --      见 customer_level()）。两个意思挤同一个名字，结果就是：
+    --      练度存进去了、一切读出来全变成 "none"（我在测试里当场撞上）。
+    --      对外发（JSON）的名字是 `gameLevel`，同理。
+    game         TEXT DEFAULT '',               -- 游戏
+    server       TEXT DEFAULT '',               -- 区服（官服 / B服 / 亚服…）
+    account      TEXT DEFAULT '',               -- 账号 / 手机号（★ 不打码：他要看着拨号、搜索）
+    password     TEXT DEFAULT '',               -- 密码（★ 后台默认打码，点小眼睛才显示）
+    role         TEXT DEFAULT '',               -- 角色名
+    game_level   TEXT DEFAULT '',               -- 练度 / 等级（自由文本：他写"精二 90"也行）
     created_at   INTEGER DEFAULT 0,             -- 建档时间（毫秒时间戳）
     updated_at   INTEGER DEFAULT 0              -- 最后一次改动时间（毫秒时间戳）
 );
@@ -797,6 +955,22 @@ def init_db():
         # gallery 表补 link（★ 展示墙的外链：B 站视频地址 / 自己做的网站）
         if ensure_column(conn, "gallery", "link", "TEXT DEFAULT ''"):
             print("[迁移] gallery 表补上了 link 字段（展示墙外链，老的图都是空的）", flush=True)
+        # ★ customers 表补 6 个"游戏账号"字段（代肝要知道客户的账号在哪个游戏、区服、角色名…）。
+        #   ⚠️ 老库已经有 customers 表了，`CREATE TABLE IF NOT EXISTS` 一行都不会改，
+        #      所以必须走 ensure_column 一个个补 —— 补列不动任何已有的行（客户的资料一条都不丢）。
+        #   这一批是**客户隐私**，只在后台用；公开接口一个字都不带（见 site_summary）。
+        customer_cols = [col for col, decl in (
+            ("game", "TEXT DEFAULT ''"),
+            ("server", "TEXT DEFAULT ''"),
+            ("account", "TEXT DEFAULT ''"),
+            ("password", "TEXT DEFAULT ''"),
+            ("role", "TEXT DEFAULT ''"),
+            # ⚠️ 列名是 game_level，不是 level —— 见 SCHEMA 里那段说明（level 早就有主了）
+            ("game_level", "TEXT DEFAULT ''"),
+        ) if ensure_column(conn, "customers", col, decl)]
+        if customer_cols:
+            print("[迁移] customers 表补上了游戏账号字段：%s（老客户资料没动）"
+                  % "、".join(customer_cols), flush=True)
         if conn.execute("SELECT 1 FROM store WHERE key='profile'").fetchone() is None:
             conn.execute("INSERT INTO store(key, value) VALUES('profile', ?)",
                          (json.dumps(DEFAULT_PROFILE, ensure_ascii=False),))
@@ -830,9 +1004,14 @@ def site_summary():
     给前台用的"全局资料"精简版（首页、分区页、条款页都要它）。
     故意只挑这几个字段：客户信息里只该出现品牌、昵称、微信、头像、信任信号。
 
-    ★ 这里还多带两样"前台每一页都要用"的东西：
+    ★ 这里还多带几样"前台每一页都要用"的东西：
       · texts          —— 客户能看到的每一句中文（默认值已经补齐，见 get_texts）；
-      · imagePositions —— 首页三张图的显示位置（九宫格选出来的那个值）。
+      · imagePositions —— 首页三张图的显示位置（九宫格选出来的那个值）；
+      · faq / steps    —— 常见问题 + 服务流程（见「二之八」那一章）。
+
+    ⚠️ **客户档案一个字段都不在这里**：姓名、联系方式、游戏账号、密码……
+       全部只走要登录的 /api/admin。所以这个函数可以放心被公开接口调用 ——
+       加字段的时候也请守住这一条（tests\\test_profile_fields.py 有断言守着）。
     """
     p = get_profile()
     return {
@@ -849,7 +1028,7 @@ def site_summary():
         "accepting": bool(p.get("accepting", True)),
         "background": str(p.get("background") or ""),
         "backgroundDim": int(p.get("backgroundDim") or 0),
-        # ★ 下面这两样是"首页、分区页、条款页都要用"的（文案表 / 图片显示位置）。
+        # ★ 下面这几样是"首页、分区页、条款页都要用"的（文案表 / 图片位置 / FAQ / 流程）。
         #   ⚠️ 为什么把它们放在中间、而不是放在最后：__PAGE__ 那段 JSON 是**嵌套**的，
         #   如果一个嵌套对象正好是最后一个键，序列化出来就会出现 "}}" ——
         #   而 tests\test_zones.py 有一条老断言在查"首页 HTML 里不该有 {{ 或 }} 残留"
@@ -861,6 +1040,10 @@ def site_summary():
             "background": p["backgroundPosition"],
             "heroImage": p["heroImagePosition"],
         },
+        # ★ 常见问题（折叠块）+ 服务流程（几步的图）：前台两个页面都要用，
+        #   而且都是"主人能在后台整条增删改排序"的数据（不只是几句话，所以单独两个键）。
+        "faq": faq_view(),
+        "steps": steps_view(),
         "heroImage": str(p.get("heroImage") or ""),      # 主页首屏主视觉（选填，独立于任何分区）
     }
 
@@ -1184,7 +1367,14 @@ def clean_zone_profile(raw):
                 "id": iid,
                 "name": iname,
                 "price": str(it.get("price") or "")[:30],       # 自由文本，原样保留
+                # note = 价目表里那一行的小字说明（一直显示）
                 "note": str(it.get("note") or "")[:300],
+                # ★ detail = 「这个包含什么」点开才看到的详细说明（多行文本，选填）。
+                #   为什么要多这一个字段：客户看到档位只有一行说明，他不知道
+                #   "多花的钱买到了什么"。让他点一下就能看到清单，比把表格撑得很长好。
+                #   ⚠️ 它**跟着条目走**（存在 zones.profile 这一个 JSON 里），
+                #      所以备份一个字都不用改（profile 整个都在备份里）。
+                "detail": str(it.get("detail") or "")[:1500],
                 "hot": bool(it.get("hot")),
             })
             item_ids.append(iid)
@@ -1570,7 +1760,8 @@ def parse_price_lines(text):
     """
     解析"批量粘贴导入价目表"的文本。每行格式：
 
-        名称 | 价格 | 说明       （说明可以省略；竖线用半角 | 或全角 ｜ 都行）
+        名称 | 价格 | 说明 | 详细说明
+        （"说明"和"详细说明"都可以省略；竖线用半角 | 或全角 ｜ 都行）
 
     返回 (成功解析出来的条目列表, 错误列表)。错误列表里每项是 {"line": 行号, "reason": "原因"}。
 
@@ -1579,6 +1770,14 @@ def parse_price_lines(text):
       · 只写名称（没有竖线）→ 也算一条，价格留空（主人可能想先列项目再填价）
       · 名称必须非空，否则记一条错误
       · 行数上限 200，超出的部分截断并报一条错误
+
+    ★ 第 4 段「详细说明」是第五刀加的：客户点开「这个包含什么 ▾」看到的那段清单。
+      为什么要走批量导入：三个托管档位各差十几行说明，**手打 20 遍太苦了** ——
+      他能从别处（自己的价目表文档）一次粘进来。
+      ⚠️ 前三段用竖线分隔，所以说明里**不能再出现竖线**；换行呢？
+        粘贴的文本本身是一行一条，没法直接写多行。所以约定：**用字面的 \\n 表示换行**
+        （他写 "每天：清体力\\n基建：换班"，导入后就变成两行）——
+        这是导入这一条路上的小语法，前台显示的就是真换行。
     """
     items, errors = [], []
     lines = str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -1595,8 +1794,12 @@ def parse_price_lines(text):
             errors.append({"line": no, "reason": "这一行没有名称（竖线前面是空的）。"})
             continue
         price = (parts[1] if len(parts) > 1 else "")[:30]
-        note = (" | ".join(parts[2:]) if len(parts) > 2 else "")[:300]
-        items.append({"name": name, "price": price, "note": note, "hot": False})
+        note = (parts[2] if len(parts) > 2 else "")[:300]
+        # 第 4 段及之后都算详细说明（他要是多写了几段，全接上，别丢）
+        detail = (" | ".join(parts[3:]) if len(parts) > 3 else "")
+        detail = detail.replace("\\n", "\n")[:1500]      # 字面的 \n 换成真换行（见上面说明）
+        items.append({"name": name, "price": price, "note": note,
+                      "detail": detail, "hot": False})
     return items, errors
 
 
@@ -1938,6 +2141,12 @@ def customer_view(row):
     data = dict(row)
     data["contact_type"] = str(data.get("contact_type") or CUSTOMER_DEFAULT_CONTACT)
     data["status"] = str(data.get("status") or "active")
+    # ★ 把库里那一列 game_level 改名成 gameLevel 发出去。
+    #   为什么非改不可：`level` 这个键**已经被"到期分档"占了**（下面那几行），
+    #   要是练度也叫 level，两个意思就会互相覆盖 —— 结果就是"练度存进去了，
+    #   但读出来永远是 none"（我写测试时当场撞上）。
+    #   删掉 game_level 那一份是为了不把内部列名泄漏给前端 / 备份（备份里也统一叫 gameLevel）。
+    data["gameLevel"] = str(data.pop("game_level", "") or "")
     days = days_left(data.get("end_date"))
     level = customer_level(days, data["status"])
     data["daysLeft"] = days
@@ -1963,6 +2172,14 @@ def clean_customer(data):
         置空之后这条客户就是"长期"，永远不会误报到期 —— 比存一个错的日期安全得多。
       · price / item / note 都是自由文本，原样保留（"20R/月"绝不变形）
       · status 走白名单，认不出来的一律当 active
+      · ★ game / server / account / password / role / gameLevel 是"游戏账号"六件事：
+        也全是自由文本（练度他写 "精二 90" 或 "E2 60" 都行）。
+        **密码不在这里做任何加工** —— 打码是"后台显示"那一层的事（见 static/admin.js 的
+        PASSWORD_MASK），存进库里必须是原文，否则客户列表那个「复制密码」就复制不出东西了。
+        长度上限是必须的：不然有人能往这两个字段里塞 10 万字。
+        ⚠️ 练度 **不能叫 level**：那个名字是"到期分档"算出来的（expired/today/soon…），
+           两个意思挤同一个名字的话，练度读出来永远是 "none"。库里叫 game_level，
+           对外发叫 gameLevel（前端表单、备份都跟着这个名字）。
     """
     data = data if isinstance(data, dict) else {}
     name = str(data.get("name") or "").strip()[:30]
@@ -1988,6 +2205,14 @@ def clean_customer(data):
         "end_date": str(data.get("end_date") or "").strip()[:10],
         "status": status,
         "note": str(data.get("note") or "").strip()[:300],
+        # ★ 游戏账号六件事（客户隐私，只在后台出现；公开接口一个字都不带）
+        "game": str(data.get("game") or "").strip()[:30],
+        "server": str(data.get("server") or "").strip()[:30],
+        "account": str(data.get("account") or "").strip()[:60],
+        "password": str(data.get("password") or "").strip()[:60],
+        "role": str(data.get("role") or "").strip()[:40],
+        # 对外叫 gameLevel（库里那一列叫 game_level），理由见上面那段说明
+        "gameLevel": str(data.get("gameLevel") or "").strip()[:30],
     }
     # 日期：格式不对就置空（见上面注释里的取舍）
     for key in ("start_date", "end_date"):
@@ -2033,6 +2258,11 @@ def save_customer(data):
 
     带 id 且这个 id 真的存在 → 更新（created_at 保留，updated_at 刷新）
     没带 id（或 id 已经不存在了）→ 新建一条，id 用 uuid4().hex
+
+    ⚠️ **UPDATE 和 INSERT 两条 SQL 的列名必须和 clean_customer() 的字段一一对应**
+       （第 3 刀踩过的坑：加字段时只改一边 = 那一列永远存不进去 / 或者报 ProgrammingError）。
+       现在这两条和 apply_backup() 里那条 INSERT 是**同一批列**，加字段时三处一起改：
+       ① clean_customer ② 这里两条 ③ apply_backup。
     """
     fields, err = clean_customer(data)
     if err:
@@ -2044,18 +2274,25 @@ def save_customer(data):
         if existing:
             conn.execute("""UPDATE customers SET name=?, contact=?, contact_type=?, zone=?,
                             item=?, price=?, start_date=?, end_date=?, status=?, note=?,
+                            game=?, server=?, account=?, password=?, role=?, game_level=?,
                             updated_at=? WHERE id=?""",
                          (fields["name"], fields["contact"], fields["contact_type"], fields["zone"],
                           fields["item"], fields["price"], fields["start_date"], fields["end_date"],
-                          fields["status"], fields["note"], now_ms, cid))
+                          fields["status"], fields["note"],
+                          fields["game"], fields["server"], fields["account"], fields["password"],
+                          fields["role"], fields["gameLevel"], now_ms, cid))
         else:
             cid = uuid.uuid4().hex
             conn.execute("""INSERT INTO customers(id, name, contact, contact_type, zone, item,
-                            price, start_date, end_date, status, note, created_at, updated_at)
-                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            price, start_date, end_date, status, note,
+                            game, server, account, password, role, game_level,
+                            created_at, updated_at)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                          (cid, fields["name"], fields["contact"], fields["contact_type"],
                           fields["zone"], fields["item"], fields["price"], fields["start_date"],
-                          fields["end_date"], fields["status"], fields["note"], now_ms, now_ms))
+                          fields["end_date"], fields["status"], fields["note"],
+                          fields["game"], fields["server"], fields["account"], fields["password"],
+                          fields["role"], fields["gameLevel"], now_ms, now_ms))
     return get_customer(cid), None
 
 
@@ -2916,6 +3153,10 @@ def build_backup():
         # ★ 服务条款：整份都带上（标题 + 小节 + 最后更新日期）。
         #   老备份里没有这一项 → 同样跳过，他改过的条款不会被一份老备份冲掉。
         "terms": terms_view(),
+        # ★ 常见问题 + 服务流程（第五刀）：和条款一样，是主人一个字一个字写出来的，
+        #   重建不了 —— 老备份里没有这两项 → 恢复时跳过，绝不清空。
+        "faq": faq_view(),
+        "steps": steps_view(),
     }
 
 
@@ -2983,6 +3224,17 @@ def apply_backup(data):
         # ⚠️ set_store 必须在下面那个 `with _db_lock` **之前**调（它自己也要拿这把锁）。
         set_store(TERMS_STORE_KEY,
                   json.dumps(clean_terms(data["terms"])[0], ensure_ascii=False))
+
+    # ---- ★ 常见问题 / 服务流程（老备份里没有这两项 → 一条都不动）----
+    # 同一条规矩、同一个理由：那是主人一个字一个字写出来的，没有第二份。
+    has_faq = isinstance(data.get("faq"), dict)
+    if has_faq:
+        set_store(FAQ_STORE_KEY,
+                  json.dumps(clean_faq(data["faq"])[0], ensure_ascii=False))
+    has_steps = isinstance(data.get("steps"), dict)
+    if has_steps:
+        set_store(STEPS_STORE_KEY,
+                  json.dumps(clean_steps(data["steps"])[0], ensure_ascii=False))
 
     zones, zone_images = [], {}
     known_ids = {c["id"] for c in list_categories()}
@@ -3122,6 +3374,11 @@ def apply_backup(data):
         customers.append((str(c.get("id") or uuid.uuid4().hex), fields["name"], fields["contact"],
                           fields["contact_type"], fields["zone"], fields["item"], fields["price"],
                           fields["start_date"], fields["end_date"], fields["status"], fields["note"],
+                          # ★ 游戏账号六件事：老备份里没有这几个字段 → clean_customer 会给空串
+                          #   （绝不清空、也绝不错位），所以"老备份兼容"是自动成立的。
+                          #   注意最后一个叫 gameLevel（库里的列是 game_level）。
+                          fields["game"], fields["server"], fields["account"], fields["password"],
+                          fields["role"], fields["gameLevel"],
                           int(c.get("created_at") or 0), int(c.get("updated_at") or 0)))
 
     # ---- ★ 收入流水 ----
@@ -3149,10 +3406,14 @@ def apply_backup(data):
         conn.execute("DELETE FROM gallery")
         if has_customers:
             # 备份里带了客户档案 → 整体替换（和 locks/gallery 一样是"覆盖"语义）
+            # ⚠️ 这条 SQL 的列名必须和上面 customers.append(...) 的顺序**一一对应**，
+            #    也必须和 save_customer() 里那两条对齐 —— 加字段时三处一起改（坑 32 的翻版）。
             conn.execute("DELETE FROM customers")
             conn.executemany("""INSERT INTO customers(id, name, contact, contact_type, zone, item,
-                                price, start_date, end_date, status, note, created_at, updated_at)
-                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", customers)
+                                price, start_date, end_date, status, note,
+                                game, server, account, password, role, game_level,
+                                created_at, updated_at)
+                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", customers)
         if has_payments:
             # 备份里带了收入流水 → 整体替换（老备份没带就一条都不动，见上面那段）
             conn.execute("DELETE FROM payments")
@@ -3186,6 +3447,9 @@ def apply_backup(data):
             # 文案报"自定义了几句"（老备份没带就是现在库里的数），条款报"恢复了几节"
             "texts": len(get_text_overrides()),
             "terms": len((terms_view().get("sections") or [])),
+            # ★ FAQ 报"恢复了几条"、流程报"恢复了几步"（老备份没带就是现在库里的数）
+            "faq": len((faq_view().get("items") or [])),
+            "steps": len((steps_view().get("items") or [])),
             "images": images, "profileRevision": new_rev}, None
 
 
@@ -3706,6 +3970,156 @@ def login_reset(ip):
     """密码对了 → 把这个 IP 的失败记录清掉（免得之前手滑几次就一直背着）"""
     with _login_hits_lock:
         _login_hits.pop(ip, None)
+
+
+# ============================================================================
+# 二之八、★ 常见问题 + 服务流程（客户"正犹豫"和"不知道下一步"时看的两块东西）
+#
+#   这两块为什么放在同一章：它们是同一类东西 ——
+#   **一份"能整条增删改排序"的结构化内容**（不是一句话，所以不能塞进 TEXT_GROUPS）。
+#   写法照「服务条款」（clean_terms / save_terms）那一套：
+#     存 store 一个 key → 默认值写在「一、配置」 → 后台整块编辑 → 前台折叠块渲染。
+#
+#     · faq   （store key='faq'）  ：标题 + 副标题 + 一条条"问题 / 答案"
+#     · steps （store key='steps'）：标题 + 一条条"第几步 / 这一步做什么"（2~6 步）
+#
+#   放在哪（主人已经确认过的位置）：
+#     · FAQ：分区页**价目表下面**（客户正犹豫的地方）+ 主页服务卡片下面。
+#           做成折叠块而不是独立页面 —— 犹豫的人不会去点单独的一页。
+#     · 流程：主页服务卡片下面 + 分区页**价目表上面**（先知道怎么走，再看多少钱）。
+#
+#   ⚠️ 写库的两条规矩（和文案 / 条款那一章一模一样，别再犯）：
+#     1. 这里所有函数**自己会拿 _db_lock**（走 set_store），
+#        所以它们**绝不能被 from 到 `with _db_lock` 里面去调** —— 普通 Lock 不可重入，
+#        在锁里再拿一次 = 全站卡死（见交接说明的坑 21 / 30）。
+#     2. 备份恢复时这两项都要"备份里有才覆盖，没有就一条都不动" ——
+#        老备份（还没有 FAQ 这一版导出的）不该把主人写好的问答冲掉。
+# ============================================================================
+
+
+def clean_faq(raw):
+    """
+    把常见问题洗干净。返回 (FAQ 字典, 被丢掉的条目数)。
+
+    规矩（和 clean_terms 一个风格：**宁可少一条，也不能整条存不进去**）：
+      · 问题和答案**都空**的条目 → 当成"你把这条删了"，直接丢（不算错，只回报条数）；
+      · 只有标题空 → 退回默认标题（后台点保存时另有一道 400，见 admin_faq）；
+      · 问题有、答案空 → **保留**（他想先占个位、答案以后再填，这是合理用法）；
+      · 条数上限 FAQ_ITEM_MAX，每条的问题 / 答案各有长度上限。
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    title = str(raw.get("title") or "").strip()[:FAQ_TITLE_MAX] or DEFAULT_FAQ["title"]
+    subtitle = str(raw.get("subtitle") or "").strip()[:FAQ_SUBTITLE_MAX]
+    items, dropped = [], 0
+    for row in (raw.get("items") or []):
+        if not isinstance(row, dict):
+            dropped += 1
+            continue
+        q = str(row.get("q") or "").strip()[:FAQ_Q_MAX]
+        a = str(row.get("a") or "").strip()[:FAQ_A_MAX]
+        if not q and not a:
+            dropped += 1
+            continue
+        items.append({"q": q, "a": a})
+        if len(items) >= FAQ_ITEM_MAX:
+            break
+    return {"title": title, "subtitle": subtitle, "items": items}, dropped
+
+
+def faq_view():
+    """
+    读常见问题（库里的 + 默认值兜底）。
+
+    兜底规则和 list_categories 一个思路：**永远不返回"空白一块"**。
+    库里没存过 / 存坏了 / 洗完之后一条都不剩 → 回到出厂那 8 条。
+    （"一条都不剩"也算兜底：主人要是真把 8 条全删了，前台就没东西可显示了，
+      而"FAQ 是空的"对客户来说和"这一块不存在"没区别 —— 那就干脆显示默认那份。）
+    """
+    raw = get_store(FAQ_STORE_KEY)
+    try:
+        data = json.loads(raw) if raw else None
+    except ValueError:                 # 库里存了坏 JSON：当成"没设置过"
+        data = None
+    if isinstance(data, dict):
+        cleaned, _dropped = clean_faq(data)
+        if cleaned["items"]:
+            return cleaned
+    return {"title": DEFAULT_FAQ["title"], "subtitle": DEFAULT_FAQ["subtitle"],
+            "items": [dict(x) for x in DEFAULT_FAQ["items"]]}
+
+
+def save_faq(raw):
+    """保存常见问题。返回 (FAQ 字典, 被丢掉的条目数)。"""
+    cleaned, dropped = clean_faq(raw)
+    set_store(FAQ_STORE_KEY, json.dumps(cleaned, ensure_ascii=False))
+    return cleaned, dropped
+
+
+def reset_faq():
+    """「恢复默认」：把 store 里的 faq 删掉（= 回到出厂那 8 条）。"""
+    set_store(FAQ_STORE_KEY, "")
+    return faq_view()
+
+
+def clean_steps(raw):
+    """
+    把服务流程洗干净。返回 (流程字典, 被丢掉的步数)。
+
+    规矩：标题和说明**都空**的步骤丢掉；**最后会卡 2~6 步**（见下面那段说明）。
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    title = str(raw.get("title") or "").strip()[:STEPS_TITLE_MAX] or DEFAULT_STEPS["title"]
+    items, dropped = [], 0
+    for row in (raw.get("items") or []):
+        if not isinstance(row, dict):
+            dropped += 1
+            continue
+        t = str(row.get("title") or "").strip()[:STEPS_ITEM_TITLE_MAX]
+        d = str(row.get("desc") or "").strip()[:STEPS_ITEM_DESC_MAX]
+        if not t and not d:
+            dropped += 1
+            continue
+        items.append({"title": t, "desc": d})
+        if len(items) >= STEPS_ITEM_MAX:
+            dropped += 0            # 超出的部分不算"丢错的"，回一个 notes 里说明即可
+            break
+
+    # ★ 步数上限 6：再多客户就不看了（他自己接单也没那么复杂）。
+    #   步数下限 2：**1 步不成"流程"** —— 那时候该做的不是删步骤，而是把这一块整个不用。
+    #   为什么下限不在"洗"这一层直接报错：主人可能正编辑到一半（先删成 1 步再加），
+    #   直接 400 会把整页打回去。所以这里是"**不足 2 步就退回默认那 4 步**"，
+    #   前台永远不会出现"只有一步的流程图"。
+    if len(items) < STEPS_ITEM_MIN:
+        return {"title": title,
+                "items": [dict(x) for x in DEFAULT_STEPS["items"]]}, dropped
+    return {"title": title, "items": items}, dropped
+
+
+def steps_view():
+    """读服务流程（库里的 + 默认值兜底）。永远不返回空列表（见 clean_steps 的下限）。"""
+    raw = get_store(STEPS_STORE_KEY)
+    try:
+        data = json.loads(raw) if raw else None
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        cleaned, _dropped = clean_steps(data)
+        if cleaned["items"]:
+            return cleaned
+    return {"title": DEFAULT_STEPS["title"], "items": [dict(x) for x in DEFAULT_STEPS["items"]]}
+
+
+def save_steps(raw):
+    """保存服务流程。返回 (流程字典, 被丢掉的步数)。"""
+    cleaned, dropped = clean_steps(raw)
+    set_store(STEPS_STORE_KEY, json.dumps(cleaned, ensure_ascii=False))
+    return cleaned, dropped
+
+
+def reset_steps():
+    """「恢复默认」：回到出厂那 4 步。"""
+    set_store(STEPS_STORE_KEY, "")
+    return steps_view()
 
 
 # ============================================================================
@@ -4596,6 +5010,9 @@ class Handler(BaseHTTPRequestHandler):
                 "textGroups": text_groups_for_admin(),    # 后台「文案」页照它生成输入框
                 "textOverrides": get_text_overrides(),    # 只存了这几句（"恢复默认"用得上）
                 "terms": terms_view(),                    # 服务条款（标题 + 小节）
+                # ★ 常见问题 + 服务流程（第五刀）：后台「文案」页里两块可增删改排序的内容
+                "faq": faq_view(),
+                "steps": steps_view(),
                 "positionChoices": [{"value": v, "name": n} for v, n in POSITION_CHOICES],
                 "serverTime": int(time.time() * 1000),   # 前端算"已经等了 N 小时"要用它
             })
@@ -4690,6 +5107,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.admin_texts(body)
         if path == "/api/admin/terms":                   # ★ 服务条款（保存 / 恢复默认）
             return self.admin_terms(body)
+        if path == "/api/admin/faq":                     # ★ 常见问题（保存 / 恢复默认）
+            return self.admin_faq(body)
+        if path == "/api/admin/steps":                   # ★ 服务流程（保存 / 恢复默认）
+            return self.admin_steps(body)
 
         return self.send_json({"error": "接口不存在。"}, 404)
 
@@ -5250,6 +5671,73 @@ class Handler(BaseHTTPRequestHandler):
 
         return self.send_json({"error": "不支持的操作。"}, 400)
 
+    def admin_faq(self, body):
+        """
+        POST /api/admin/faq —— ★ 常见问题（后台「文案」页里那一块）。
+
+          save  保存 {action:"save", title, subtitle, items:[{q,a}, …]}
+                    条序就是数组顺序 —— 后台的 ↑↓ 就是在调这个数组。
+          reset 恢复默认 {action:"reset"}  ← 回到 app.py 里那 8 条
+
+        校验（和条款那一块一个套路）：
+          · 标题空 → 400（标题是这一块的门面，不能空着）；
+          · 问题和答案**都空**的条目 → 丢掉（= 你把这条删了），不算错，
+            但返回里带一个 dropped，前端可以提一句"空条目已忽略"。
+        """
+        action = str(body.get("action") or "save")
+
+        if action == "reset":
+            return self.send_json({"ok": True, "faq": reset_faq(), "reset": True})
+
+        if action == "save":
+            if not isinstance(body.get("items"), list):
+                return self.send_json({"error": "常见问题格式不正确（要一个数组）。"}, 400)
+            if not str(body.get("title") or "").strip():
+                return self.send_json({"error": "常见问题的小标题不能是空的。"}, 400)
+            faq, dropped = save_faq(body)
+            return self.send_json({"ok": True, "faq": faq, "dropped": dropped})
+
+        return self.send_json({"error": "不支持的操作。"}, 400)
+
+    def admin_steps(self, body):
+        """
+        POST /api/admin/steps —— ★ 服务流程（后台「文案」页里那一块）。
+
+          save  保存 {action:"save", title, items:[{title,desc}, …]}（2~6 步）
+          reset 恢复默认 {action:"reset"}  ← 回到出厂那 4 步
+
+        校验：
+          · 标题空 → 400；
+          · 少于 2 步 → **不报错，退回默认那 4 步**并在返回里给一句 tip。
+            为什么不报 400：主人可能正编辑到一半（先删掉几步再加新的），
+            直接打回整页会让他白填。前台也不会因此出现"只有一步的流程图"。
+          · 多于 6 步 → 只保留前 6 步（clean_steps 里截断），同样给一句 tip。
+        """
+        action = str(body.get("action") or "save")
+
+        if action == "reset":
+            return self.send_json({"ok": True, "steps": reset_steps(), "reset": True})
+
+        if action == "save":
+            if not isinstance(body.get("items"), list):
+                return self.send_json({"error": "服务流程格式不正确（要一个数组）。"}, 400)
+            if not str(body.get("title") or "").strip():
+                return self.send_json({"error": "服务流程的小标题不能是空的。"}, 400)
+            raw_items = [x for x in body["items"] if isinstance(x, dict)]
+            steps, dropped = save_steps(body)
+            # ★ 提示要按**主人提交的条数**判断，不能按"洗完之后的条数"判断 ——
+            #   因为"不足 2 步"时 clean_steps 已经把它换成出厂那 4 步了，
+            #   拿洗完的结果去看永远是 4 步、永远不提示（我第一版就是这么写的，测试当场漏掉了提示）。
+            tip = ""
+            if len(raw_items) < STEPS_ITEM_MIN:
+                tip = ("只有 %d 步不成流程，已经先用默认那 4 步顶着；"
+                       "加够 %d 步再保存。" % (len(raw_items), STEPS_ITEM_MIN))
+            elif len(raw_items) > STEPS_ITEM_MAX:
+                tip = "最多 %d 步，超出的没保存。" % STEPS_ITEM_MAX
+            return self.send_json({"ok": True, "steps": steps, "dropped": dropped, "tip": tip})
+
+        return self.send_json({"error": "不支持的操作。"}, 400)
+
     def admin_import(self, body):
         """从备份 JSON 恢复：整体覆盖预约时段、休息规则、资料、展示墙、分区和收入流水。"""
         data = body.get("backup") if isinstance(body, dict) and isinstance(body.get("backup"), dict) else body
@@ -5285,6 +5773,9 @@ class Handler(BaseHTTPRequestHandler):
             "textGroups": text_groups_for_admin(),
             "textOverrides": get_text_overrides(),
             "terms": terms_view(),
+            # ★ 常见问题 / 服务流程：老备份没带这两项 → 还是他现在写的那份（绝不清空）
+            "faq": faq_view(),
+            "steps": steps_view(),
         })
 
     def admin_password(self, body):

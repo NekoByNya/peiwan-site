@@ -28,9 +28,11 @@ problems = []
 # 这些目录不算"要上传的东西"：业务数据、临时测试库、字节码缓存、截图
 SKIP_DIRS = {"data", ".testdata", "__pycache__", "screenshots", "_shots2", ".git"}
 
+# ⚠️ app.py 之外的 .py 模块也要在这里点名（漏传会 ImportError，所有页面 500）。
 REQUIRED = ["app.py", "requirements.txt", "render.yaml",
-            "static/style.css", "static/site.js", "static/admin.js",
-            "templates/index.html", "templates/admin.html"]
+            "static/style.css", "static/site.js", "static/admin.js", "static/zone.js",
+            "templates/index.html", "templates/admin.html", "templates/zone.html",
+            "templates/terms.html"]
 
 REMOVED_IN_PY = {
     "3.12": ["distutils", "asynchat", "asyncore", "smtpd", "imp"],

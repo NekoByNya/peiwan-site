@@ -194,7 +194,21 @@ def main():
         trmcode = subprocess.call(
             [sys.executable, os.path.join(ROOT, "tests", "test_terms.py")], env=tenv)
 
-        # ---------------- 第十一阶段：并发读写 ----------------
+        # ---------------- 第十一阶段：客户档案结构化 + 密码打码（第五刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 客户档案测试（游戏账号 6 个字段 + 绝不出现在公开接口 + 密码打码）")
+        print("=" * 60, flush=True)
+        profcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_profile_fields.py")], env=tenv)
+
+        # ---------------- 第十二阶段：常见问题 + 服务流程（第五刀） ----------------
+        print("\n" + "=" * 60)
+        print(" 常见问题 / 服务流程测试（后台增删改排序 + 前台折叠块 + 默认值 + 备份）")
+        print("=" * 60, flush=True)
+        faqcode = subprocess.call(
+            [sys.executable, os.path.join(ROOT, "tests", "test_faq_steps.py")], env=tenv)
+
+        # ---------------- 第十三阶段：并发读写 ----------------
         print("\n" + "=" * 60)
         print(" 并发测试（客户看时间表的同时，你在后台锁定/取消时段）")
         print("=" * 60, flush=True)
@@ -206,7 +220,7 @@ def main():
 
         print("\n本阶段：通过 %d 项，失败 %d 项" % (ok, fail))
         return (code or bcode or zcode or ccode or glcode or cflcode or incode or txtcode
-                or trmcode or concode or (1 if fail else 0))
+                or trmcode or profcode or faqcode or concode or (1 if fail else 0))
     finally:
         stop_server(proc)
         shutil.rmtree(TEST_DATA, ignore_errors=True)

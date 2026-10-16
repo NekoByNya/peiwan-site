@@ -24,7 +24,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(os.path.dirname(ROOT), "peiwan-site-上传用.zip")
 
 # 要打包的文件（显式列出来，避免误把数据打进去）
-FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml", "start.bat", "start-lan.bat",
+# ⚠️ 除了 app.py，如果以后再加了别的 .py 模块（比如拆出去的库），
+#    **一定记得往这个清单里加一行** —— app.py 里 `import` 了它，
+#    漏传的话服务器上一启动就 ImportError（每个页面都 500）。
+FILES = ["app.py", "wsgi.py", "requirements.txt", "render.yaml",
+         "start.bat", "start-lan.bat",
          "README.md", "DEPLOY.md", "DEPLOY-PYTHONANYWHERE.md", ".gitignore"]
 DIRS = ["static", "templates", "tests", "docs", "tools", ".github"]
 # 这些目录永远不进包：数据、临时测试库、缓存的字节码、以及**给主人看的截图目录**

@@ -97,6 +97,27 @@
         <img id="priceSheetImg" alt="完整价目表" data-zoom="">
       </div>
     </div>
+
+    <!-- ★ 服务流程：放在**价目表这一块的上面** —— 先知道"要走几步"，
+         再看"每一步多少钱"，客户不会一上来就被价格砸懵。
+         预约制分区里，它在三档价格下面；服务制分区里，它在分组价目表下面
+         （两种情况都在这一块的最后，位置由这一块的结尾决定）。 -->
+    <div class="panel steps-panel" id="stepsPanel" hidden>
+      <h2 id="stepsTitle">怎么开始</h2>
+      <ol class="promises steps-list" id="stepsList"></ol>
+    </div>
+
+    <!-- ★ 常见问题：放在**价目表那一块的下面**（客户正犹豫的地方）。
+         做成折叠块，每条一个 <details>，点一下展开 —— 不是独立页面。 -->
+    <div class="panel faq-panel" id="faqPanel" hidden>
+      <div class="section-head compact">
+        <div>
+          <h2 id="faqTitle">常见问题</h2>
+        </div>
+        <p id="faqSubtitle"></p>
+      </div>
+      <div class="faq-list" id="faqList"></div>
+    </div>
   </div>
 </section>
 

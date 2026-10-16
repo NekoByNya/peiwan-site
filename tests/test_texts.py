@@ -6,7 +6,7 @@
 "客户看到的东西，主人自己就能调"，而且都走同一条路（store / profile + 前台读值）。
 
   【文案表 store key='texts'】
-   1. 目录：`/api/admin` 的 textGroups 5 组、每条都有 key / 说明 / 默认值 / 现在的值；
+   1. 目录：`/api/admin` 的 textGroups 6 组、每条都有 key / 说明 / 默认值 / 现在的值；
       默认值必须**就是以前写死的那句话**（没改过的人完全看不出差别）
    2. 保存：改一句 → `/api/public` 的 site.texts 立刻变（前台不用刷新缓存）
    3. **留空 = 用默认**：清空某一格 → 那一句回到默认；
@@ -170,8 +170,13 @@ groups = adm.get("textGroups") or []
 fields = all_fields(adm)
 check("★ 后台拿到了文案目录（分组）", len(groups) >= 4,
       "共 %d 组：%s" % (len(groups), [g["name"] for g in groups]))
-check("★ 目录是 5 组（主页 / 分区页价目 / 下单流程 / 页脚通用 / 空状态）",
-      len(groups) == 5, str([g["name"] for g in groups]))
+# ⚠️ 这个数字**会跟着加功能变**（第五刀加了一组「⑥ 后台提示」：密码打码的提示；
+#    二维码那几句在 2026-10-15 那个功能被砍掉时一起删了，但**组数没变**，还是 6 组），
+#    所以同时守住"不少于 5 组"和"名字对得上"。
+#    改这一行的时候请顺手把上面"共 %d 句"那个数（现在 86 句）
+#    和 docs\交接说明.md / README.md 里"八十多句"的说法一起对一遍。
+check("★ 目录是 6 组（主页 / 分区页价目 / 下单流程 / 页脚通用 / 空状态 / 后台提示）",
+      len(groups) == 6, str([g["name"] for g in groups]))
 check("每一组都有一句人话说明", all(g.get("hint") for g in groups),
       str([g.get("hint") for g in groups])[:120])
 check("★ 字段数量够覆盖（>= 80 句）", len(fields) >= 80, "共 %d 句" % len(fields))

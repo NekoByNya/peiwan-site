@@ -213,6 +213,11 @@
         金额是<b>自由文本</b>，你写什么就显示什么（例如 <code>20R/月</code>）。
         「到期日期」留空的客户是长期/一次性，永远不会催你。
       </p>
+      <!-- ★ 密码打码的说明（主人点名要的一句话）。
+           为什么只打密码不打账号：账号（手机号）他经常要看着拨号 / 搜索，
+           打码了反而碍事；密码是"别人站你身后看一眼就能记住"的那种，才需要挡一下。
+           这句话本身也能在后台「文案 → ⑥ 后台提示」里改（key = adminPasswordMaskHint）。 -->
+      <p class="hint" id="customerPasswordHint" style="margin:-6px 0 12px"></p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <div class="filters" id="customerFilters" style="margin:0"></div>
         <div class="spacer" style="margin-left:auto"></div>
@@ -534,6 +539,64 @@
         <span class="hint" id="termsState"></span>
       </div>
     </div>
+
+    <!-- ★ 常见问题：一个标题 + 可增删的条目（每条 = 问题 + 答案），↑↓ 调顺序。
+         为什么放在「文案」页里：它和上面那两块是同一类东西 ——
+         "客户能看到的中文，主人自己就能改"，而且写法（增删改排序）和条款完全一样。 -->
+    <div class="panel">
+      <h2>常见问题（客户在价目表下面看到的那个折叠块）</h2>
+      <p class="sub">
+        客户在价目表那里犹豫的时候，心里那几个问题（账号安全吗 / 打不完怎么算 / 能退款吗）
+        就在这里回答他。分区页放在<b>价目表下面</b>，主页放在服务卡片下面，都是能点开的折叠块。
+      </p>
+      <p class="hint" style="margin:-8px 0 16px">
+        <b>这条最常见</b>，所以默认给你写了 8 条，可以直接用，也可以改成你自己的口气。
+        答案里空一行 = 另起一段，单独换行就是换行；写 <code>{wechat}</code> 会自动变成你的微信号。
+      </p>
+      <div class="field">
+        <label for="faqTitleInput">这一块的标题（客户看到的那一行）</label>
+        <input id="faqTitleInput" maxlength="40" placeholder="常见问题">
+      </div>
+      <div class="field">
+        <label for="faqSubtitleInput">标题右边那行小字（选填）</label>
+        <input id="faqSubtitleInput" maxlength="60" placeholder="点开看答案，没写到的直接微信问我">
+      </div>
+      <div id="faqItems"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="button ghost small" id="addFaqItem">+ 新增一条</button>
+        <button class="button ghost small" id="resetFaq">恢复默认 8 条</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px">
+        <button class="button primary" id="saveFaq">保存常见问题</button>
+        <span class="hint" id="faqState"></span>
+      </div>
+    </div>
+
+    <!-- ★ 服务流程：一个标题 + 2~6 步（每步 = 一句话标题 + 一句说明），↑↓ 调顺序 -->
+    <div class="panel">
+      <h2>服务流程（客户从"看到"到"下单"要走几步）</h2>
+      <p class="sub">
+        客户第一次来最怕的是"我点一下会发生什么"。把几步写清楚，他就知道点完还有人在后面接住。
+        分区页放在<b>价目表上面</b>，主页放在服务卡片下面，编号会显示成 01 / 02 / 03 那种圆圈。
+      </p>
+      <p class="hint" style="margin:-8px 0 16px">
+        <b>2 ~ 6 步</b>：少于 2 步不成流程（会先用默认那 4 步顶着），多于 6 步客户就不看了。
+        详情里的 <code>{wechat}</code> 一样会自动换成你的微信号。
+      </p>
+      <div class="field">
+        <label for="stepsTitleInput">这一块的标题</label>
+        <input id="stepsTitleInput" maxlength="40" placeholder="怎么开始">
+      </div>
+      <div id="stepsItems"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="button ghost small" id="addStepItem">+ 新增一步</button>
+        <button class="button ghost small" id="resetSteps">恢复默认 4 步</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px">
+        <button class="button primary" id="saveSteps">保存服务流程</button>
+        <span class="hint" id="stepsState"></span>
+      </div>
+    </div>
   </section>
 
   <!-- ==================== 报价（独立标签页） ==================== -->
@@ -578,10 +641,10 @@
           <label for="importGroup">导入到哪一组（不存在会自动新建）</label>
           <input id="importGroup" maxlength="30" placeholder="例如：托管">
         </div>
-        <textarea id="importText" placeholder="普通托管 | 20R/月 | 日双清+每周返图+日常周常+基建+信用商店等，月卡加5R&#10;半精托管 | 55R/月 | 加活动/剿灭代打&#10;精托托管 | 100R/月 | 全托管，见价目表&#10;（说明可以省略；行首加 # 是注释，会被忽略）"></textarea>
+        <textarea id="importText" placeholder="普通托管 | 20R/月 | 日双清+每周返图+日常周常+基建+信用商店等，月卡加5R&#10;半精托管 | 55R/月 | 加活动/剿灭代打&#10;精托托管 | 100R/月 | 全托管，见价目表 | 本月活动全刻章\n打肉鸽每月至少20级\n计划练度制定&#10;（说明可以省略；第 4 段是「这个包含什么」的清单，段里用 \n 表示换行；行首加 # 是注释，会被忽略）"></textarea>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="button primary small" id="runImport">导入这些行</button>
-          <span class="hint" id="importState">每行格式：名称 | 价格 | 说明（说明可省略）</span>
+          <span class="hint" id="importState">每行格式：名称 | 价格 | 说明 | 详细说明（后两段都可省略）</span>
         </div>
       </div>
     </div>
@@ -808,6 +871,39 @@
         </select>
       </div>
     </div>
+
+    <!-- ★ 游戏账号（代肝要登录客户的号，这几项以前只能塞在备注里）。
+         一行两个，手机上会自动上下排（.grid-2 在窄屏是一条一列）。
+         全部选填；「练度 / 等级」和「金额」一样是自由文本，他写"精二 90"就照原样存。 -->
+    <h4 class="form-sub-title">游戏账号（选填 —— 以前只能写在备注里，现在分开填）</h4>
+    <div class="grid-2">
+      <div class="field">
+        <label for="cGame">游戏</label>
+        <input id="cGame" maxlength="30" placeholder="例如：明日方舟 / 三角洲行动">
+      </div>
+      <div class="field">
+        <label for="cServer">区服（官服/B服）</label>
+        <input id="cServer" maxlength="30" placeholder="例如：官服 / B服 / 亚服">
+      </div>
+      <div class="field">
+        <label for="cAccount">账号或手机号</label>
+        <input id="cAccount" maxlength="60" placeholder="他登录用的账号 / 手机号">
+      </div>
+      <div class="field">
+        <label for="cPassword">密码</label>
+        <input id="cPassword" maxlength="60" placeholder="存进库里是原文，列表里默认打码">
+        <p class="hint" style="margin:4px 0 0">列表里默认显示 ••••••，点小眼睛才看得到明文。</p>
+      </div>
+      <div class="field">
+        <label for="cRole">角色名</label>
+        <input id="cRole" maxlength="40" placeholder="游戏里的角色名 / 昵称">
+      </div>
+      <div class="field">
+        <label for="cLevel">练度或等级</label>
+        <input id="cLevel" maxlength="30" placeholder="自由文本，例如：精二 90 / 满级">
+      </div>
+    </div>
+
     <div class="field">
       <label for="cNote">备注（账号情况、特殊要求、返图时间…）</label>
       <textarea id="cNote" maxlength="300"></textarea>

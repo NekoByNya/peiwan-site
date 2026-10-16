@@ -34,8 +34,12 @@ checked = 0
 
 # ---------- 1. 检查「`函数名`（第 N 行）」这种引用 ----------
 print("=== 函数与行号 ===")
-# 文档里函数名可能带反引号，比如 `do_GET`（第 658 行），所以反引号要可选
-for m in re.finditer(r"`?([A-Za-z_][A-Za-z0-9_]*)`?\s*（第\s*(\d+)\s*行）", doc):
+# ⚠️ 这里为什么要把"函数名 / 常量名 + 一对可选括号 + 一个可选反引号"这几种写法全认下来：
+#    文档里同一件事有三种写法 —— `build_slots`（第 N 行）、`build_slots()`（第 N 行）、
+#    `renew_customer`（第 N 行）。一开始只认第一种，另外两种**从来没被查过**，
+#    于是它们悄悄漂了几百行（`income_stats()` 那一处漂了 560 行）也没人发现。
+#    正则里的名字用 ([A-Za-z_][A-Za-z0-9_]*) 抓，反引号和括号都是可选的。
+for m in re.finditer(r"`?([A-Za-z_][A-Za-z0-9_]*)`?(?:\(\))?\s*（第\s*(\d+)\s*行）", doc):
     name, num = m.group(1), int(m.group(2))
     checked += 1
     if num - 1 >= len(lines):
@@ -45,8 +49,10 @@ for m in re.finditer(r"`?([A-Za-z_][A-Za-z0-9_]*)`?\s*（第\s*(\d+)\s*行）", 
     if name in actual:
         print("  [OK]   %-18s 第 %d 行" % (name, num))
     else:
+        # 找它现在在哪：函数 / 类 / 模块级常量都试一遍
         now = [i + 1 for i, l in enumerate(lines)
-               if ("def " + name) in l or ("class " + name) in l]
+               if ("def " + name) in l or ("class " + name) in l
+               or l.strip().startswith(name + " =") or l.strip().startswith(name + ":")]
         hint = ("它现在在第 %d 行" % now[0]) if now else "在 app.py 里找不到这个名字"
         problems.append("%s：文档说第 %d 行，实际那行是 %r（%s）"
                         % (name, num, actual.strip()[:40], hint))
