@@ -620,9 +620,13 @@ textarea.message {
 }
 .panel-head::-webkit-details-marker { display: none; }
 .panel-head:hover h2 { color: var(--accent); }
-.panel-head h2 { margin: 0; font-size: 16.5px; font-weight: 600; display: flex; align-items: center; gap: 10px; }.panel-hint { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 12.5px; }
-.panel-caret { flex: 0 0 auto; color: var(--accent); font-size: 12px; transition: transform .15s; }
-.panel[open] > .panel-head .panel-caret { transform: rotate(180deg); }
+.panel-head h2 { margin: 0; font-size: 16.5px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.panel-hint { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 12.5px; }
+/* ⚠️ 这里**故意不写箭头**：前台那套 `.panel summary::after`（本文件更靠前）已经会给
+   每个 .panel 的摘要行画 ▾ / ▴，后台这些 <details class="panel"> 一并受益。
+   我第一版自己又加了个 <span class="panel-caret">▾</span>，结果每个折叠块上
+   **出现两个箭头**（截图里一眼就看出来了）。复用它比自己另起一套好 ——
+   以后前台箭头换个样子，后台跟着一起变。 */
 /* 收起来的时候：块本身矮一点，排在一起更清爽 */
 .panel:not([open]) { padding: 14px 20px; }
 .panel:not([open]) > .panel-head { margin: 0; }
