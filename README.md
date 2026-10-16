@@ -95,8 +95,6 @@ peiwan-site/
 │   ├── test_concurrency.py   ← 并发测试：客户刷时间表 + 你后台锁定时段：6 项
 │   ├── check_deployed.py     ← 线上体检：26 项只读检查，部署完跑这个
 │   └── check_frontend.js     ← 检查 JS 里的元素 id 和 HTML 对不对得上
-├── .github/
-│   └── workflows/keepwarm.yml ← GitHub Actions 保活：每 5 分钟叫醒网站，防数据被清空
 ├── tools/
 │   ├── make_package.py       ← 打包"要传上 GitHub 的文件"成 zip
 │   ├── check_docs.py         ← 检查代码导读里的行号有没有过期

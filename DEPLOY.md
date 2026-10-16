@@ -232,7 +232,7 @@ git push
 
 **A-2：GitHub Actions（不用注册新账号）**
 
-你的仓库里已经有一个现成的保活工作流：`.github/workflows/keepwarm.yml`。
+（★ 2026-10-16 注：那个 `keepwarm.yml` 已经删掉了 —— 它是给 Render 写的，而这个站已经搬到 PythonAnywhere，PA 不会休眠，用不上保活 ✗）
 
 1. 打开仓库 → **Actions** 标签页 → 如果看到一个叫「保活」的工作流，说明已经生效
 2. 它每 **5 分钟**访问一次 `/api/ping`，用的是 GitHub 的免费额度（公开仓库不消耗额度）
