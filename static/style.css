@@ -1391,7 +1391,18 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
    ============================================================================ */
 .zone-bg {
   position: fixed;
-  inset: 0;
+  /* ★ 2026-10-17：不能再用 inset:0 ✗
+     手机上划动时地址栏会收起/出现 ✓ 视口高度跟着变 ✗
+     用 inset:0 的 fixed 层高度也跟着变 ✗ → background-size:cover 重新缩放 ✗
+     表现就是背景一跳一跳、忽大忽小、像位移了一下✓（主人原话 ✓）
+     改成固定用【最大视口高度 100lvh】✓ 地址栏怎么变它都不变 ✓ 背景就稳了 ✓
+     （lvh = large viewport height ✓ iOS 15.4+ / 安卓 Chrome 108+ 都支持 ✓
+       老浏览器不认这一行会退回下面那行 height:100vh ✓ 也能用 ✓） */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100lvh;
   z-index: -1;
   background-size: cover;
   background-position: center;
@@ -1439,8 +1450,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     min-width: 150px;
   }
   /* ③ 选模式弹窗：底部留够空间，内容能滚过 sticky 按钮 */
-  /* ⚠️ 容器是 .modal（不是 modal-box ✓ 我第一次写错了 ✓ 查了 zone.html 才确认） */
-  .modal {
-    padding-bottom: 86px;
-  }
+  /* ★ 2026-10-17 撤回：加了 86px 之后底部按钮被顶到【弹窗中间】✗
+         主人截图：按钮飘在中间、内容从它下面穿过去 ✗
+         原因：按钮是 position:sticky;bottom:0 ✓ 只有自然位置低于底边时才贴底 ✓
+         加了 padding 之后它自然位置变高了 ✗ → 就停在中间 ✓
+         撤回 → 按钮回到底部 ✓（上次挡住最后一句那个小问题先不管 ✓ 比这个好 ✓） */
 }
