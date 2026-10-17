@@ -1434,25 +1434,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     white-space: normal;
     word-break: break-word;
   }
-  .price-table td,
-  .price-table th {
-    white-space: normal;
-    word-break: break-word;
-  }
-
-  /* ★ 2026-10-17 回滚：主人说前一版好✓ 那就用【左右滑】这版 ✓
-        两行一个条目那版他试了不喜欢 ✗ 已撤 ✓
-        现在：表格保持原样 ✓ 超出的部分手指左右划就能看到 ✓ */
-  .price-group {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .price-table td,
-  .price-table th {
-    white-space: normal;
-    word-break: break-word;
-  }
-  .price-table td:last-child {
+  .price-table td:last-child,
+  .price-table th:last-child {
     min-width: 150px;
   }
   /* ③ 选模式弹窗：底部留够空间，内容能滚过 sticky 按钮 */
