@@ -1380,37 +1380,6 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .faq-panel-open[open] > summary::after { content: '▴'; }
 .faq-panel-open > summary:hover .panel-title { color: var(--accent); }
 
-/* ============================================================================
-   分区页：整页背景（2026-10-17 加，照抄首页 .site-bg 那一套）
-   ----------------------------------------------------------------------------
-   为什么加：主人说「分区没有一整个背景图」「你看下面那些就是原背景」✗
-     以前背景只贴在首屏那一块（.zone-hero-bg 在 .zone-hero 里面）✓
-     往下滚就是 body 的纯黑 ✗
-   现在：position:fixed 铺满整个视口 ✓ 滚到哪都在 ✓ 和首页一模一样 ✓
-   压暗用和首页同一个 --dim 变量（zone.js 按后台那个百分比设进来）✓
-   ============================================================================ */
-.zone-bg {
-  position: fixed;
-  /* ★ 2026-10-17：从【导航条下面】开始 ✓ 不能从 0 开始 ✗
-     从 0 开始的话，最上面那一条（导航上面那 108px）会露出这张图被裁到的暗处 ✗
-     看起来就是一条灰带 ✓（主人截图里的图一 ✓）往下滑被首屏盖住就没了 ✓
-     顶上那 108px 交给导航条自己的底色 ✓ 视觉上是一条完整的深色顶栏 ✓ */
-  top: 108px;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: -1;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.zone-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: #050806;
-  opacity: var(--dim, .72);
-}
 
 /* ============================================================================
    手机端修正三条（2026-10-17，都是主人手机实拍发现的）
