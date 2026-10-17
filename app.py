@@ -700,7 +700,37 @@ DEFAULT_ZONE_PROFILE = {
     "prices": [],                    # 只有 kind=booking 的分区用：三档价格
     "priceGroups": [],               # 只有 kind=service 的分区用：分组价目表
     "featured": [],                  # 「主推档位」：从 priceGroups 里挑出来的 item id（最多 3 个）
+    # ★ 2026-10-17 加：每个分区自己的「常见问题」和「服务流程」
+    #   为什么要按分区来：三角洲（陪玩）和明日方舟（代肝）客户关心的问题
+    #   根本不是一回事 ✗ 一套问答套所有分区必然别扭 ✓
+    #   规则（★ 很重要）：**空字典 = 没单独设置 → 依次用全局那套** ✓
+    #     全局那套就是 store 里的 faq / steps（后台「文案」页选「通用」时编辑的）✓
+    #   所以老数据一个字段都不用迁 ✓ 老分区行为完全不变 ✓
+    "faq": {},                       # {title, subtitle, items:[{id,q,a}]}；{} = 用全局
+    "steps": {},                     # {title, items:[{title,desc}]}；{} = 用全局
 }
+
+
+def zone_site_summary(zone):
+    """
+    ★ 某个分区该用的 site 数据（2026-10-17 加）。
+
+    把全局那份 site_summary() 里的 faq / steps 换成【这个分区自己的】：
+      · 分区里那两个是空字典（= 没单独设置）→ 保留全局那份（老分区行为完全不变 ✓）
+      · 填了 → 用分区的 ✓
+
+    这样前台的 zone.js **一行都不用改** —— 它读的永远是 state.site.faq / .steps，
+    我们只是在服务端把这两个键换掉而已 ✓
+    """
+    site = site_summary()
+    if not zone:
+        return site
+    prof = merge_zone_profile(zone.get("profile"))
+    if prof.get("faq"):
+        site = dict(site, faq=prof["faq"])
+    if prof.get("steps"):
+        site = dict(site, steps=prof["steps"])
+    return site
 
 # 迁移一个**全新站点**时，给第一个分区（delta）预置的三档价格 ——
 # 这样装好就能直接开张，不用先去后台填价格；老站点则用原来的 prices 覆盖它。
@@ -1459,6 +1489,31 @@ def clean_zone_profile(raw):
         out[key] = str(raw.get(key) or "")[:300]
     out["highlights"] = _clean_text_list(raw.get("highlights"), limit=12, each=20)
     out["promises"] = _clean_text_list(raw.get("promises"), limit=12, each=200)
+
+    # ★ 每个分区自己的「常见问题」「服务流程」（2026-10-17 加）
+    #   空 = 没单独设置 → 前台依次用全局那套（store 里的 faq / steps）✓
+    #   ⚠️ 注意：clean_faq / clean_steps 自己会"不足就用默认值兜底" ✗
+    #      所以这里必须【先看原始条目够不够】再洗 ✓ 否则"没设置"会被洗成
+    #      "一套默认问答"✗ 那全局那套就被顶掉了 ✓ 等于没实现按分区 ✓
+    raw_faq = raw.get("faq")
+    if isinstance(raw_faq, dict):
+        faq_items = [x for x in (raw_faq.get("items") or []) if isinstance(x, dict)]
+        if faq_items:
+            out["faq"], _ = clean_faq(raw_faq)
+        else:
+            out["faq"] = {}
+    else:
+        out["faq"] = {}
+    raw_steps = raw.get("steps")
+    if isinstance(raw_steps, dict):
+        step_items = [x for x in (raw_steps.get("items") or []) if isinstance(x, dict)]
+        # 不足 2 步不算"设置过"（和 clean_steps 的下限一致 ✓）
+        if len(step_items) >= STEPS_ITEM_MIN:
+            out["steps"], _ = clean_steps(raw_steps)
+        else:
+            out["steps"] = {}
+    else:
+        out["steps"] = {}
     # ★ 图片显示位置：不是截断就行，得按 9 个合法值校验（认不出来退回 center）
     for key in ZONE_POSITION_KEYS:
         out[key] = clean_image_position(raw.get(key))
@@ -4802,7 +4857,8 @@ class Handler(BaseHTTPRequestHandler):
             if not desc:
                 desc = "%s的%s服务：%s" % (name, game, zone["name"])
             og_url = "%s/z/%s" % (self.site_origin(), zone["id"])
-            payload = {"zone": zone_public_view(zone), "site": site,
+            # ★ 这个分区自己的「常见问题」「服务流程」优先（见 zone_site_summary）
+            payload = {"zone": zone_public_view(zone), "site": zone_site_summary(zone),
                        "nav": self.nav_model(), "mode": "zone"}
             theme = zone.get("theme") or DEFAULT_THEME
         else:
@@ -5025,7 +5081,7 @@ class Handler(BaseHTTPRequestHandler):
           · profile：全局资料 + 这个分区的资料（合并视图）
           · gallery：这个分区的公开图
         """
-        site = site_summary()
+        site = zone_site_summary(zone)          # ★ 这个分区自己的问答/流程优先（见 zone_site_summary）
         view = zone_public_view(zone) if zone else {
             "id": "", "name": "", "short": "", "icon": "", "theme": DEFAULT_THEME,
             "category": "", "kind": "booking", "sort": 0, "visible": True,

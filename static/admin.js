@@ -298,6 +298,7 @@ function renderAll() {
   renderDataHint();
   renderTexts();              // ★ 文案标签页（照着目录生成输入框）
   renderTerms();              // ★ 服务条款（标题 + 小节编辑器）
+  renderSummaryTargets();     // ★ 「常见问题 / 服务流程」在改哪一份（通用 / 某个分区）
   renderFaq();                // ★ 常见问题（一条条增删改排序）
   renderSteps();              // ★ 服务流程（2~6 步）
   renderPosPickers();         // ★ 图片显示位置：把五张图按当前位置摆好
@@ -1895,6 +1896,39 @@ function collectZoneForm() {
   };
 }
 
+/**
+ * 把这个分区的最新资料写回本地那一份（state.zones）。
+ *
+ * 为什么要单独一个函数：/api/admin/zones 的 update / profile 两个动作返回的是
+ * **单个 zone**（{ok, zone, zoneBriefs}），不是整份列表 —— applyZoneResult 只认 zones，
+ * 所以光调它的话 state 里还是旧资料（页面会显示"保存成功了但内容没变"）。
+ * 这里按 id 换掉那一条，前端就不用为了看一眼刚存的东西再刷一次页面。
+ */
+function mergeZoneIntoState(zone) {
+  if (!zone || !zone.id) return;
+  const at = state.zones.findIndex((z) => z.id === zone.id);
+  if (at >= 0) state.zones[at] = zone;
+  else state.zones.push(zone);
+}
+
+/**
+ * 把一份分区资料存回去（就这一条路，别在别处再复制一份 POST）。
+ *
+ * 后端 /api/admin/zones 的 action=profile 是**部分更新**：传什么改什么，
+ * 没传的字段原样保留 —— 所以老调用方（saveZone）传整份，
+ * 「文案」页那两块只传 {faq: …} / {steps: …} 也行。
+ * 存完把返回的那个分区写回本地，前端不用自己猜新状态。
+ */
+async function postZoneProfile(zoneId, profile) {
+  const saved = await api('/api/admin/zones', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'profile', id: zoneId, profile }),
+  });
+  applyZoneResult(saved);
+  mergeZoneIntoState(saved.zone);
+  return saved;
+}
+
 /** 保存分区（基本信息和资料一起存） */
 async function saveZone(silent = false) {
   const data = collectZoneForm();
@@ -1909,14 +1943,11 @@ async function saveZone(silent = false) {
         theme: data.theme, icon: data.icon,       // icon 不能漏！否则上传的图标刷新后就没了
       }),
     });
-    const saved = await api('/api/admin/zones', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'profile', id: data.id, profile: data.profile }),
-    });
-    applyZoneResult(saved);
+    await postZoneProfile(data.id, data.profile);
     renderZoneAdmin();
     fillZonePickers();
     fillZoneForm();
+    renderSummaryTargets();   // 分区名可能刚改过 ——「文案」页那行小字跟着更新
     if (!silent) {
       $('#zoneState').textContent = '已保存，前台立刻生效（客户刷新就能看到）';
       toast('分区已保存');
@@ -3687,11 +3718,109 @@ $('#resetTerms').addEventListener('click', async () => {
      · save / reset          两个按钮各一个接口（/api/admin/faq、/api/admin/steps）
    为什么要在前端也维护一份 state.faq / state.steps：
      ↑↓ 和删除都是"先改内存、再重画"，没有它就得每次都发一趟接口（慢，而且中途失败很难看）。
+
+   ★ 2026-10-17：这两块现在**跟着「资料」页顶部那个「分区」下拉框走**。
+     选「🏠 个人主页」 → 编辑的是「通用」那份（= 老行为，一点没变，走 /api/admin/faq）。
+     选某个分区     → 编辑的是那个分区自己的那一份（存在分区的 profile.faq / profile.steps 里，
+                      走和「保存分区资料」同一个接口，见上面的 postZoneProfile）。
+     分区自己那份是空的（= 没单独设置）→ 显示「通用」那份（和后端 zone_site_summary 的规则一致）。
    ========================================================================== */
+
+/** 现在「文案」页这两块跟着谁走？返回分区对象；选着「🏠 个人主页」/ 没有分区时返回 null（= 通用那份） */
+function summaryZone() {
+  if (state.editHome) return null;
+  return currentZone();
+}
+
+/** 「常见问题」这一屏该显示哪一份：分区自己写过就用它的，没写过就用「通用」那份 */
+function faqSource() {
+  const z = summaryZone();
+  const own = (z && z.profile && z.profile.faq) || null;
+  if (own && (own.items || []).length) return own;
+  return state.faq || { title: '', subtitle: '', items: [] };
+}
+
+/** 「服务流程」这一屏该显示哪一份（规则同上） */
+function stepsSource() {
+  const z = summaryZone();
+  const own = (z && z.profile && z.profile.steps) || null;
+  if (own && (own.items || []).length) return own;
+  return state.steps || { title: '', items: [] };
+}
+
+/** 把「常见问题」编辑框里现在的内容放回它该待的地方（通用 → state.faq；分区 → 那个分区的 profile.faq） */
+function setFaqDraft(form) {
+  const z = summaryZone();
+  if (z) {
+    z.profile = z.profile || {};
+    z.profile.faq = form;
+    return;
+  }
+  state.faq = form;
+}
+
+/** 把「服务流程」编辑框里现在的内容放回它该待的地方（同上） */
+function setStepsDraft(form) {
+  const z = summaryZone();
+  if (z) {
+    z.profile = z.profile || {};
+    z.profile.steps = form;
+    return;
+  }
+  state.steps = form;
+}
+
+/** 更新两块标题下面那行小字：「正在编辑：通用（所有分区）/ 某个分区」 */
+function renderSummaryTargets() {
+  const z = summaryZone();
+  const target = $('#faqTargetHint');
+  if (target) target.textContent = z ? z.name : '通用（所有分区）';
+  const stepsTarget = $('#stepsTargetHint');
+  if (stepsTarget) stepsTarget.textContent = z ? z.name : '通用（所有分区）';
+}
+
+/** 清掉某一块右边那行小字（重新编辑之后，旧的"已保存 / 现在显示的是哪一份"就该重新算） */
+function clearStateHint(id) {
+  const el = $('#' + id);
+  if (el) { el.className = 'hint'; el.textContent = ''; }
+}
+
+/** 切换分区后重画这两块（连"现在显示的是哪一份"那行小字一起更新） */
+function refreshSiteSummary() {
+  clearStateHint('faqState');
+  clearStateHint('stepsState');
+  renderSummaryTargets();
+  renderFaq();
+  renderSteps();
+}
+
+/** 「常见问题」状态行那句话：说清现在看到的是哪一份 */
+function faqStateText(items) {
+  const z = summaryZone();
+  if (!z) return `现在有 ${items.length} 条（最多 ${30} 条）· 这份是「通用」，所有分区都用它`;
+  const own = (z.profile && z.profile.faq) || {};
+  if ((own.items || []).length) {
+    return `现在有 ${items.length} 条（最多 ${30} 条）· 这份只给「${z.name}」用`;
+  }
+  return `这个分区还没单独写过问答，现在显示的是「通用」那 ${items.length} 条 ——`
+    + ` 改了保存，就变成「${z.name}」自己的`;
+}
+
+/** 「服务流程」状态行那句话：说清现在看到的是哪一份 */
+function stepsStateText(items) {
+  const z = summaryZone();
+  if (!z) return `现在有 ${items.length} 步（要 2~6 步）· 这份是「通用」，所有分区都用它`;
+  const own = (z.profile && z.profile.steps) || {};
+  if ((own.items || []).length) {
+    return `现在有 ${items.length} 步（要 2~6 步）· 这份只给「${z.name}」用`;
+  }
+  return `这个分区还没单独写过流程，现在显示的是「通用」那 ${items.length} 步 ——`
+    + ` 改了保存，就变成「${z.name}」自己的`;
+}
 
 /** 画「常见问题」：一个标题 + 一条条（问题 / 答案），右边 ↑↓ 和删除 */
 function renderFaq() {
-  const f = state.faq || {};
+  const f = faqSource() || {};
   const t = $('#faqTitleInput');
   if (!t) return;
   t.value = f.title || '常见问题';
@@ -3721,13 +3850,13 @@ function renderFaq() {
     || '<div class="empty-state">现在一条都没有。点下面「+ 新增一条」，或者点「恢复默认 8 条」。</div>';
   const stateEl = $('#faqState');
   if (stateEl && !stateEl.textContent) {
-    stateEl.textContent = `现在有 ${items.length} 条（最多 ${30} 条）`;
+    stateEl.textContent = faqStateText(items);
   }
 }
 
-/** 把「常见问题」编辑框里现在的内容收回内存 */
+/** 把「常见问题」编辑框里现在的内容收回内存（收回的是"当前这一份"：通用 或 某个分区的） */
 function collectFaqFromForm() {
-  const f = { ...(state.faq || {}) };
+  const f = { ...(faqSource() || {}) };
   const t = $('#faqTitleInput');
   const sub = $('#faqSubtitleInput');
   f.title = t ? t.value.trim() : (f.title || '');
@@ -3753,22 +3882,38 @@ async function saveFaqForm() {
     el.textContent = '常见问题的小标题不能是空的。';
     return toast('小标题不能是空的', true);
   }
+  const z = summaryZone();
   const btn = $('#saveFaq');
   btn.disabled = true;
   el.className = 'hint';
   el.textContent = '正在保存…';
   try {
-    const data = await api('/api/admin/faq', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'save', title: form.title,
-                             subtitle: form.subtitle, items: form.items }),
-    });
-    applyFaqResult(data);
-    $('#faqState').className = 'hint ok';
-    $('#faqState').textContent = data.dropped
-      ? `已保存（有 ${data.dropped} 条是空的，已经忽略）—— 客户刷新页面就看到了`
-      : '已保存 —— 客户刷新页面就看到了';
-    toast('常见问题已保存');
+    if (z) {
+      // ★ 选着某个分区：存进这个分区自己的资料里（不碰「通用」那份）
+      const items = (form.items || []).map((it) => ({ q: it.q, a: it.a }));
+      await postZoneProfile(z.id, { faq: { title: form.title, subtitle: form.subtitle, items } });
+      renderFaq();
+      const saved = zoneById(z.id) || z;
+      const n = ((saved.profile && saved.profile.faq && saved.profile.faq.items) || []).length;
+      $('#faqState').className = 'hint ok';
+      $('#faqState').textContent = n
+        ? `已保存到这个分区 —— 客户刷新页面就看到了（${n} 条，只给「${saved.name}」用）`
+        : '这个分区现在没有自己的问答了 —— 客户看到的还是「通用」那套（刷新页面就看到了）';
+      toast(`「${saved.name}」的常见问题已保存`);
+    } else {
+      // 「🏠 个人主页」= 「通用」那份，老流程一个字没变
+      const data = await api('/api/admin/faq', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'save', title: form.title,
+                               subtitle: form.subtitle, items: form.items }),
+      });
+      applyFaqResult(data);
+      $('#faqState').className = 'hint ok';
+      $('#faqState').textContent = data.dropped
+        ? `已保存（有 ${data.dropped} 条是空的，已经忽略）—— 客户刷新页面就看到了`
+        : '已保存 —— 客户刷新页面就看到了';
+      toast('常见问题已保存');
+    }
   } catch (err) {
     $('#faqState').className = 'hint error';
     $('#faqState').textContent = err.message;
@@ -3780,7 +3925,7 @@ async function saveFaqForm() {
 
 /** 画「服务流程」：一个标题 + 2~6 步 */
 function renderSteps() {
-  const s = state.steps || {};
+  const s = stepsSource() || {};
   const t = $('#stepsTitleInput');
   if (!t) return;
   t.value = s.title || '怎么开始';
@@ -3807,12 +3952,12 @@ function renderSteps() {
     || '<div class="empty-state">现在一步都没有。点下面「+ 新增一步」，或者点「恢复默认 4 步」。</div>';
   const stateEl = $('#stepsState');
   if (stateEl && !stateEl.textContent) {
-    stateEl.textContent = `现在有 ${items.length} 步（要 2~6 步）`;
+    stateEl.textContent = stepsStateText(items);
   }
 }
 
 function collectStepsFromForm() {
-  const s = { ...(state.steps || {}) };
+  const s = { ...(stepsSource() || {}) };
   const t = $('#stepsTitleInput');
   s.title = t ? t.value.trim() : (s.title || '');
   s.items = $$('[data-step-title]').map((el) => {
@@ -3836,21 +3981,44 @@ async function saveStepsForm() {
     el.textContent = '服务流程的小标题不能是空的。';
     return toast('小标题不能是空的', true);
   }
+  const z = summaryZone();
   const btn = $('#saveSteps');
   btn.disabled = true;
   el.className = 'hint';
   el.textContent = '正在保存…';
   try {
-    const data = await api('/api/admin/steps', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'save', title: form.title, items: form.items }),
-    });
-    applyStepsResult(data);
-    $('#stepsState').className = 'hint ok';
-    $('#stepsState').textContent = data.tip
-      ? `已保存 —— ${data.tip}`
-      : `已保存 ${(data.steps || {}).items ? data.steps.items.length : 0} 步 —— 客户刷新页面就看到了`;
-    toast('服务流程已保存');
+    if (z) {
+      // ★ 选着某个分区：存进这个分区自己的资料里（不碰「通用」那份）
+      const items = (form.items || []).map((it) => ({ title: it.title, desc: it.desc }));
+      const filled = items.filter((it) => (it.title || '').trim() || (it.desc || '').trim()).length;
+      await postZoneProfile(z.id, { steps: { title: form.title, items } });
+      renderSteps();
+      const saved = zoneById(z.id) || z;
+      const n = ((saved.profile && saved.profile.steps && saved.profile.steps.items) || []).length;
+      $('#stepsState').className = 'hint ok';
+      if (filled < 2) {
+        // 后端规矩：不满 2 步不算"设置过"，会存成空（= 用「通用」那套）
+        $('#stepsState').textContent =
+          `这个分区只有 ${filled} 步，不成流程 —— 它现在用「通用」那套（客户刷新页面就看到了）`;
+      } else {
+        $('#stepsState').textContent = filled > 6
+          ? `已保存到这个分区（最多 6 步，超出的没保存）—— 客户刷新页面就看到了（${n} 步，只给「${saved.name}」用）`
+          : `已保存到这个分区 —— 客户刷新页面就看到了（${n} 步，只给「${saved.name}」用）`;
+      }
+      toast(`「${saved.name}」的服务流程已保存`);
+    } else {
+      // 「🏠 个人主页」= 「通用」那份，老流程一个字没变
+      const data = await api('/api/admin/steps', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'save', title: form.title, items: form.items }),
+      });
+      applyStepsResult(data);
+      $('#stepsState').className = 'hint ok';
+      $('#stepsState').textContent = data.tip
+        ? `已保存 —— ${data.tip}`
+        : `已保存 ${(data.steps || {}).items ? data.steps.items.length : 0} 步 —— 客户刷新页面就看到了`;
+      toast('服务流程已保存');
+    }
   } catch (err) {
     $('#stepsState').className = 'hint error';
     $('#stepsState').textContent = err.message;
@@ -3880,19 +4048,41 @@ $('#faqItems').addEventListener('click', (e) => {
     if (!confirm(`删除第 ${i + 1} 条？\n（点「保存常见问题」之后客户那边才会变）`)) return;
     items.splice(i, 1);
   }
-  state.faq = { ...form, items };
+  setFaqDraft({ ...form, items });
+  clearStateHint('faqState');
   renderFaq();
 });
 $('#addFaqItem').addEventListener('click', () => {
   const form = collectFaqFromForm();
   form.items = (form.items || []).concat([{ q: '', a: '' }]);
-  state.faq = form;
+  setFaqDraft(form);
+  clearStateHint('faqState');
   renderFaq();
   toast('新增了一条，填好问题和答案再点保存');
 });
 $('#resetFaq').addEventListener('click', async () => {
-  if (!confirm('恢复默认的 8 条常见问题？\n（你自己写的那些会被换成出厂那份）')) return;
   const el = $('#faqState');
+  const z = summaryZone();
+  // ★ 选着某个分区：「恢复默认」= 把这个分区自己那份清空（清空后它就用「通用」那套）
+  if (z) {
+    if (!confirm(`清空「${z.name}」自己写的问答？\n（清空后它就用「通用」那套，客户刷新页面就看到这个变化）`)) return;
+    el.className = 'hint';
+    el.textContent = '正在恢复…';
+    try {
+      await postZoneProfile(z.id, { faq: {} });
+      renderFaq();
+      $('#faqState').className = 'hint ok';
+      $('#faqState').textContent = '已清空这个分区的问答，它会用「通用」那套';
+      toast('已改回用「通用」的常见问题');
+    } catch (err) {
+      el.className = 'hint error';
+      el.textContent = err.message;
+      toast(err.message, true);
+    }
+    return;
+  }
+  // 「🏠 个人主页」= 「通用」那份，老流程不变
+  if (!confirm('恢复默认的 8 条常见问题？\n（你自己写的那些会被换成出厂那份）')) return;
   el.className = 'hint';
   el.textContent = '正在恢复…';
   try {
@@ -3928,20 +4118,42 @@ $('#stepsItems').addEventListener('click', (e) => {
     if (!confirm(`删除第 ${i + 1} 步？\n（点「保存服务流程」之后客户那边才会变）`)) return;
     items.splice(i, 1);
   }
-  state.steps = { ...form, items };
+  setStepsDraft({ ...form, items });
+  clearStateHint('stepsState');
   renderSteps();
 });
 $('#addStepItem').addEventListener('click', () => {
   const form = collectStepsFromForm();
   if ((form.items || []).length >= 6) return toast('最多 6 步 —— 再多客户就不看了', true);
   form.items = (form.items || []).concat([{ title: '', desc: '' }]);
-  state.steps = form;
+  setStepsDraft(form);
+  clearStateHint('stepsState');
   renderSteps();
   toast('新增了一步，填好再点保存');
 });
 $('#resetSteps').addEventListener('click', async () => {
-  if (!confirm('恢复默认的 4 步流程？\n（你自己写的那几步会被换成出厂那份）')) return;
   const el = $('#stepsState');
+  const z = summaryZone();
+  // ★ 选着某个分区：「恢复默认」= 把这个分区自己那份清空（清空后它就用「通用」那套）
+  if (z) {
+    if (!confirm(`清空「${z.name}」自己写的流程？\n（清空后它就用「通用」那套，客户刷新页面就看到这个变化）`)) return;
+    el.className = 'hint';
+    el.textContent = '正在恢复…';
+    try {
+      await postZoneProfile(z.id, { steps: {} });
+      renderSteps();
+      $('#stepsState').className = 'hint ok';
+      $('#stepsState').textContent = '已清空这个分区的流程，它会用「通用」那套';
+      toast('已改回用「通用」的服务流程');
+    } catch (err) {
+      el.className = 'hint error';
+      el.textContent = err.message;
+      toast(err.message, true);
+    }
+    return;
+  }
+  // 「🏠 个人主页」= 「通用」那份，老流程不变
+  if (!confirm('恢复默认的 4 步流程？\n（你自己写的那几步会被换成出厂那份）')) return;
   el.className = 'hint';
   el.textContent = '正在恢复…';
   try {
@@ -3971,6 +4183,7 @@ $('#zonePick').addEventListener('change', async (e) => {
     fillZoneForm();
     fillZonePickers();
     $('#zoneState').textContent = '';
+    refreshSiteSummary();   // ★ 「文案」页那两块跟着切回「通用」那一份
     return;
   }
 
@@ -3983,6 +4196,7 @@ $('#zonePick').addEventListener('change', async (e) => {
   fillZonePickers();
   renderGallery();
   $('#zoneState').textContent = '';
+  refreshSiteSummary();     // ★ 「文案」页那两块跟着换成这个分区自己那一份
 });
 
 /** 按「正在编辑主页 / 正在编辑某个分区」切换两大块表单 */
@@ -4024,6 +4238,7 @@ if ($('#priceZonePick')) {
     fillZonePickers();
     renderGallery();
     $('#zoneState').textContent = '';
+    refreshSiteSummary();   // ★ 报价页换分区也是换「当前分区」，「文案」页那两块要跟着走
   });
 }
 if ($('#savePrices')) {
