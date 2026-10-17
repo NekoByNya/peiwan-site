@@ -1346,3 +1346,36 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .panel-fold > summary:hover h2 { color: var(--accent); }
 /* 收起时，标题下面别再留那块 padding 的空当 ✗ */
 .panel-fold:not([open]) { padding-bottom: 18px; }
+
+/* ============================================================================
+   FAQ 整块折叠：外框（2026-10-17 加）
+   ----------------------------------------------------------------------------
+   为什么加：主人说「常见问题若是折叠，没有显示方框什么的」✓
+     之前 .faq-panel-open 只有一条 summary 的 flex 规则 ✗
+     没有边框、没有背景、没有 ▾ 箭头 ✗ → 看着就是两行普通文字 ✓ 根本不像能点 ✓
+   现在补成和「流程 / 须知」那两块（.panel）一模一样的外框 ✓
+     它们长什么样，这一块就长什么样 ✓ 客户一眼就知道能点开 ✓
+   ============================================================================ */
+.faq-panel-open {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 22px;
+}
+.faq-panel-open > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.faq-panel-open > summary::-webkit-details-marker { display: none; }
+/* 收起时右侧一个 ▾，展开变 ▴ —— 和 .panel 那两块同一个做法 */
+.faq-panel-open > summary::after {
+  content: '▾';
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 12px;
+  align-self: center;
+}
+.faq-panel-open[open] > summary::after { content: '▴'; }
+.faq-panel-open > summary:hover .panel-title { color: var(--accent); }
