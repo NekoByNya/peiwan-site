@@ -59,6 +59,41 @@ DB_PATH = os.path.join(DATA_DIR, "site.db")                           # 数据�
 TEMPLATE_DIR = os.path.join(ROOT, "templates")
 STATIC_DIR = os.path.join(ROOT, "static")
 
+# ============================================================================
+# ★ 给静态资源加版本号（2026-10-17 加的，解决"改了 JS 浏览器还用旧的"）
+# ----------------------------------------------------------------------------
+# 为什么需要它（这是个大坑，真踩过）：
+#   部署到 PythonAnywhere 之后，/static/ 的请求是 PA 自己的静态文件服务接走的 ✗
+#   根本不经过本文件 → 我在 send_file 里写的 Cache-Control / ETag 对它们完全无效 ✗
+#   浏览器于是按"启发式缓存"留着旧文件 ✗
+#   主人明明已经拉了新代码，页面上跑的还是旧的 admin.js ✗
+#     表现：新按钮明明在页面上、点一下却跳到别的标签页；拖框没有比例还写着"不用调"…
+#
+# 解法：发 HTML 的时候，把 /static/xxx.js|css 改写成 /static/xxx.js?v=<最新修改时间>
+#   文件一变 URL 就变 → 浏览器必须重新下载 ✓
+#   不管中间是 PA、nginx 还是 CDN 在发，都躲不过 ✓✓
+# ============================================================================
+_ASSET_URL_RE = re.compile(r"(/static/[A-Za-z0-9_\-./]+\.(?:js|css))(?!\?)")
+
+
+def asset_version():
+    """静态 js/css 的版本号 = 这些文件里最新的修改时间（秒）。没有文件就返回 "0"。"""
+    newest = 0
+    for root, _dirs, names in os.walk(STATIC_DIR):
+        for n in names:
+            if n.endswith((".js", ".css")):
+                try:
+                    newest = max(newest, int(os.path.getmtime(os.path.join(root, n))))
+                except OSError:
+                    pass
+    return str(newest)
+
+
+def version_assets(html):
+    """把 HTML 里的 /static/*.js|css 加上 ?v=版本号（已经带问号的不动）。"""
+    ver = asset_version()
+    return _ASSET_URL_RE.sub(lambda m: "%s?v=%s" % (m.group(1), ver), html)
+
 # 北京时间：中国全年不使用夏令时，所以固定 +8 小时就永远正确
 CN = timezone(timedelta(hours=8))
 
@@ -4793,6 +4828,7 @@ class Handler(BaseHTTPRequestHandler):
             html = html.replace(key, escape_html(value) if key not in
                                 ("{{THEME_STYLE}}", "{{PAGE_JSON}}") else value)
         html = re.sub(r"\{\{[A-Z_]+\}\}", "", html)      # 有漏掉的占位符就清掉，别让客户看到
+        html = version_assets(html)                      # ★ 静态资源加版本号（见文件头那段注释）
         body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -4862,6 +4898,7 @@ class Handler(BaseHTTPRequestHandler):
             safe = key in ("{{THEME_STYLE}}", "{{TERMS_SECTIONS}}", "{{WECHAT_LINE}}")
             html = html.replace(key, value if safe else escape_html(value))
         html = re.sub(r"\{\{[A-Z_]+\}\}", "", html)      # 漏掉的占位符清掉，别给客户看到
+        html = version_assets(html)                      # ★ 静态资源加版本号（见文件头那段注释）
         body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -5036,7 +5073,20 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/terms", "/terms/"):
             return self.serve_terms()
         if path in (ADMIN_PATH, ADMIN_PATH + "/"):
-            return self.send_file(os.path.join(TEMPLATE_DIR, "admin.html"), "text/html; charset=utf-8")
+            # 后台页面也走一遍「静态资源加版本号」✓ 否则后台的 admin.js 一样会被浏览器缓存住 ✓
+            admin_path = os.path.join(TEMPLATE_DIR, "admin.html")
+            if not os.path.isfile(admin_path):
+                return self.send_json({"error": "缺少模板文件。"}, 500)
+            with open(admin_path, encoding="utf-8") as f:
+                admin_html = f.read()
+            body = version_assets(admin_html).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.write_body(body)
+            return
         # ⚠️ 旧地址 /admin 故意不给任何提示（不跳转、不提示"请改用新地址"）——
         #    否则等于告诉扫描器"后台搬到这儿了"。它现在就是个普通 404。
         # ★ 分区页：/z/delta、/z/overwatch……（放在后台、/static、/api 之后，
