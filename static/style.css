@@ -1440,50 +1440,20 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     word-break: break-word;
   }
 
-  /* ★ 2026-10-17 后半段：主人说要划才看得到说明不够好 ✓
-         → 手机上把三列【拆成两行一个条目】✓ 一屏看全、不用划 ✓
-         做法：表格全部改成 block ✓ 表头藏掉 ✓ 每个 tr 就是一张小卡 ✓
-             第一行 名称（白）+ 价格（主题色），第二行 说明（灰小字）✓ */
-  .price-group { overflow-x: visible; }
-  .price-table,
-  .price-table thead,
-  .price-table tbody,
-  .price-table tr,
-  .price-table th,
-  .price-table td {
-    display: block;
-    width: auto;
-    min-width: 0;
+  /* ★ 2026-10-17 回滚：主人说前一版好✓ 那就用【左右滑】这版 ✓
+        两行一个条目那版他试了不喜欢 ✗ 已撤 ✓
+        现在：表格保持原样 ✓ 超出的部分手指左右划就能看到 ✓ */
+  .price-group {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  .price-table thead { display: none; }         /* 手机上不需要名称/价格/说明表头 */
-  .price-table tr {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line);
+  .price-table td,
+  .price-table th {
+    white-space: normal;
+    word-break: break-word;
   }
-  .price-table tr:last-child { border-bottom: 0; }
-  .price-table td {
-    padding: 0;
-    border: 0;
-    min-width: 0;
-  }
-  /* 名称那格：白字加粗，单独一行 */
-  .price-table td:nth-child(1) {
-    font-weight: 700;
-    font-size: 15px;
-    margin-bottom: 4px;
-  }
-  /* 价格那格：主题色，跟在名称下面那一行 */
-  .price-table td:nth-child(2) {
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 14px;
-    margin-bottom: 2px;
-  }
-  /* 说明那格：灰色小字，最下面一行（长就换行，不会再被切） */
-  .price-table td:nth-child(3) {
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1.55;
+  .price-table td:last-child {
+    min-width: 150px;
   }
   /* ③ 选模式弹窗：底部留够空间，内容能滚过 sticky 按钮 */
   /* ⚠️ 容器是 .modal（不是 modal-box ✓ 我第一次写错了 ✓ 查了 zone.html 才确认） */
