@@ -220,9 +220,18 @@ function applyBackground() {
   let dim = Number(p.backgroundDim);
   if (!Number.isFinite(dim)) dim = 72;
   bg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
-  // 首屏原来那层关掉 —— 整页这层已经把它盖住了，两层都开会看到接缝
+  // ★ 2026-10-17：首屏那层【也要给图】✗
+  //   我一开始把它关掉了（想避免两层缩放不同出现接缝），结果手机上
+  //   首屏顶部那 42px 的 padding 露出来一条【灰带】✗（主人截图里的图三）
+  //   后来又只把 display 改回来 ✗ 忘了给它图片 ✗ 灰带还在 ✓
+  //   现在：两层都开、都设图 —— 首屏那层盖住顶部灰带 ✓ 整页那层管下面 ✓
   const heroBg = $('#zoneHeroBg');
-  if (heroBg) heroBg.style.display = 'none';
+  if (heroBg) {
+    heroBg.style.display = '';
+    heroBg.style.backgroundImage = 'url("' + p.background + '")';
+    heroBg.style.backgroundPosition = pos('background');
+    heroBg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
+  }
 }
 
 /** 页脚那一套（分区页和首页共用同一批文案，这里单独一个函数免得散在各处） */
