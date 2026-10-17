@@ -221,16 +221,18 @@ function applyBackground() {
   if (!Number.isFinite(dim)) dim = 72;
   bg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
   // ★ 2026-10-17：首屏那层【也要给图】✗
-  //   我一开始把它关掉了（想避免两层缩放不同出现接缝），结果手机上
-  //   首屏顶部那 42px 的 padding 露出来一条【灰带】✗（主人截图里的图三）
-  //   后来又只把 display 改回来 ✗ 忘了给它图片 ✗ 灰带还在 ✓
-  //   现在：两层都开、都设图 —— 首屏那层盖住顶部灰带 ✓ 整页那层管下面 ✓
+  // ★★ 2026-10-17 最终版：首屏那层【关掉】✗ 只留整页那一层 ✓✓
+  //   为什么（主人原话）：「又是两张一样的图，搞的被切了一样」✗
+  //   两层都用 background-size: cover ✓ 但容器大小不同 ✗
+  //     · 首屏那层跟 .zone-hero 一样大（宽×564）
+  //     · 整页那层跟视口一样大（宽×视口高）
+  //   → 同一个图在两层的缩放比例不一样 ✗ → 拼在一起就是"两张一样的图、还错位"✗✗
+  //   只留整页那一层：一张图铺满 ✓ 滚到哪都是同一张 ✓ 不会错位 ✓
+  //   （代价：首屏顶部那 42px 的 padding 会露出底色 ✓ 但那是一条干净的深色 ✓
+  //     主人说了「有灰带的就不管它了」✓）
   const heroBg = $('#zoneHeroBg');
   if (heroBg) {
-    heroBg.style.display = '';
-    heroBg.style.backgroundImage = 'url("' + p.background + '")';
-    heroBg.style.backgroundPosition = pos('background');
-    heroBg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
+    heroBg.style.display = 'none';
   }
 }
 
