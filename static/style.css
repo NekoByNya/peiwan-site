@@ -1418,11 +1418,25 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
        改法：底部留 86px ✓（55 按钮 + 30 余量）✓ 内容能滚到按钮上面 ✓
    ============================================================================ */
 @media (max-width: 1359px) {
-  /* ② 价目表格：字可以换行，别把价格切掉 */
+  /* ② 价目表格：手机上表格比屏幕宽 ✗ 右边「说明」那列整个跑到屏幕外 ✗
+        第一次我只改了字换行✗ 没解决列被切掉✗
+        正确做法：让包着表格的那个容器可以【左右滑】✓
+        （主人截图里「突袭…/1R/关/磨戏/1.5/关」那种竖着被切掉的就是这个 ✓） */
+  .price-group {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .price-table {
+    min-width: 100%;
+  }
   .price-table td,
   .price-table th {
     white-space: normal;
     word-break: break-word;
+  }
+  .price-table td:last-child,
+  .price-table th:last-child {
+    min-width: 150px;
   }
   /* ③ 选模式弹窗：底部留够空间，内容能滚过 sticky 按钮 */
   /* ⚠️ 容器是 .modal（不是 modal-box ✓ 我第一次写错了 ✓ 查了 zone.html 才确认） */
