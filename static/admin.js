@@ -3040,9 +3040,10 @@ function renderPreviewWidthUI() {
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   const spec = PREVIEW_WIDTHS.find((x) => x.w === previewScreenWidth) || PREVIEW_WIDTHS[3];
-  const text = '现在按【' + spec.label + '】这块屏幕给你看：预览框的宽高比 = 屏宽 '
-    + previewScreenWidth + ' ÷ 首屏高度 ' + previewHeightFor(previewScreenWidth, false)
-    + '，和客户实际看到的裁剪一样。'
+  // ★ 这里**故意不写具体的"首屏高度 XX px"**：同一个屏宽下，传了首屏图的分区和不传的
+  //   首屏高度不一样（手机上能差 312px），一行字写死一个数字必然对不上 ✗ 反而害人 ✗
+  const text = '现在按【' + spec.label + '】这块屏幕给你看 —— 预览框就是客户在这个宽度的屏幕上'
+    + '实际会看到的裁剪。'
     + ' ⚠️ 手机 / 平板那两档，前台首屏会塌成一栏 —— 传了首屏图就会叠成「图上、文字下」，'
     + '高度还会随标题长短变一点，所以那两档是【近似】；电脑那三档是精确的。';
   ['#posScreenWidthHint', '#posScreenWidthHint2'].forEach((sel) => {
