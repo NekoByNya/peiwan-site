@@ -188,18 +188,41 @@ function renderTabs() {
 }
 
 /* ---------- 分区首屏 ---------- */
+/**
+ * 分区页的背景图（2026-10-17 改：从"只在首屏那一块"改成"铺满整页"）
+ *
+ * 主人原话：「分区没有一整个背景图」「你看下面那些就是原背景」✗
+ *   以前的写法：<div class="zone-hero-bg"> 是 .zone-hero 的子元素 ✓
+ *   → 它只盖住首屏那一块 ✓ 往下滚就露出 body 的纯黑 ✗
+ *
+ * 现在照抄首页那套（site.js 的 .site-bg）✓：
+ *   · 造一个 position:fixed 的 .zone-bg 铺满整个视口 ✓ 滚到哪都在 ✓
+ *   · 首屏那块自己的背景图【关掉】✓ 否则两层缩放比例不同会出现横向接缝 ✗
+ *   · 压暗程度 / 显示位置还是用这个分区后台那套 ✓ 效果和首页一致 ✓
+ */
 function applyBackground() {
   const p = profile();
-  const bg = $('#zoneHeroBg');
-  if (!p.background) { bg.style.display = 'none'; return; }
-  bg.style.display = '';
+  let bg = document.querySelector('.zone-bg');
+  if (!p.background) {
+    if (bg) bg.remove();
+    const heroBg0 = $('#zoneHeroBg');
+    if (heroBg0) heroBg0.style.display = 'none';
+    return;
+  }
+  if (!bg) {
+    bg = document.createElement('div');
+    bg.className = 'zone-bg';
+    document.body.prepend(bg);
+  }
   bg.style.backgroundImage = `url("${p.background}")`;
-  // ★ 显示位置：分区背景图是 background-size: cover（铺满就会被裁），
-  //   这一行决定保留哪一块（后台「分区图片」里的九宫格选的）
+  // ★ 显示位置：铺满会被裁掉一部分，这一行决定保留哪一块（后台「分区图片」里选的）
   bg.style.backgroundPosition = pos('background');
   let dim = Number(p.backgroundDim);
   if (!Number.isFinite(dim)) dim = 72;
   bg.style.setProperty('--dim', String(Math.min(90, Math.max(0, dim)) / 100));
+  // 首屏原来那层关掉 —— 整页这层已经把它盖住了，两层都开会看到接缝
+  const heroBg = $('#zoneHeroBg');
+  if (heroBg) heroBg.style.display = 'none';
 }
 
 /** 页脚那一套（分区页和首页共用同一批文案，这里单独一个函数免得散在各处） */

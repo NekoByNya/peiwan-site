@@ -1379,3 +1379,28 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 }
 .faq-panel-open[open] > summary::after { content: '▴'; }
 .faq-panel-open > summary:hover .panel-title { color: var(--accent); }
+
+/* ============================================================================
+   分区页：整页背景（2026-10-17 加，照抄首页 .site-bg 那一套）
+   ----------------------------------------------------------------------------
+   为什么加：主人说「分区没有一整个背景图」「你看下面那些就是原背景」✗
+     以前背景只贴在首屏那一块（.zone-hero-bg 在 .zone-hero 里面）✓
+     往下滚就是 body 的纯黑 ✗
+   现在：position:fixed 铺满整个视口 ✓ 滚到哪都在 ✓ 和首页一模一样 ✓
+   压暗用和首页同一个 --dim 变量（zone.js 按后台那个百分比设进来）✓
+   ============================================================================ */
+.zone-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.zone-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #050806;
+  opacity: var(--dim, .72);
+}
