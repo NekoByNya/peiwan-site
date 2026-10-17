@@ -4891,14 +4891,42 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.write_body(body)
 
-    def send_file(self, path, content_type=None, download_name=None):
+    def send_file(self, path, content_type=None, download_name=None, cache="revalidate"):
+        """
+        发一个文件。★ 2026-10-17 加了缓存策略（cache 参数），因为踩了个真坑：
+
+          · "revalidate"（默认）→ 静态 js/css、页面 HTML 用它：
+                每次用之前都问一次服务器 ✓ 没变就回 304（几十字节 ✓ 很快）
+                变了就立刻拿到新的 ✓
+            ★ 为什么必须这样：主人拉完新代码、浏览器还抱着旧 admin.js 不放，
+              就会出现"新按钮明明在页面上、点了却跳到别的标签页"、
+              "拖框没有比例、还写着不用调"这种灵异现象 ✗ 真的踩过 ✓
+
+          · "immutable" → 上传的图片用它：
+                文件名是内容哈希 ✓ 内容永远不变 ✓ 可以让浏览器缓存一年 ✓
+                省流量、第二次打开快很多 ✓
+        """
         if not os.path.isfile(path):
             return self.send_json({"error": "文件不存在。"}, 404)
         with open(path, "rb") as f:
             body = f.read()
+        st = os.stat(path)
+        # ETag 用「修改时间 + 大小」——够准，而且不用为了它再算一遍哈希
+        etag = '"%x-%x"' % (int(st.st_mtime), len(body))
+        if cache == "revalidate" and self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
+        if cache == "immutable":
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("ETag", etag)
         if download_name:
             self.send_header("Content-Disposition", 'attachment; filename="%s"' % download_name)
         self.end_headers()
@@ -5039,7 +5067,8 @@ class Handler(BaseHTTPRequestHandler):
             }.get(ext)
             if not ctype:
                 return self.send_json({"error": "不支持的文件类型。"}, 404)
-            return self.send_file(full, ctype)
+            # 静态 js/css：每次都回服务器确认一下 ✓ 见 send_file 的注释
+            return self.send_file(full, ctype, cache="revalidate")
 
         # 图片
         if path.startswith("/api/media/"):
@@ -5049,7 +5078,8 @@ class Handler(BaseHTTPRequestHandler):
             ext = key.rsplit(".", 1)[-1].lower()
             ctype = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                      "webp": "image/webp", "gif": "image/gif"}.get(ext, "application/octet-stream")
-            return self.send_file(os.path.join(UPLOAD_DIR, key), ctype)
+            # 上传的图片：文件名就是内容哈希 ✓ 永远不会变 ✓ 可以放心让浏览器缓存一年
+            return self.send_file(os.path.join(UPLOAD_DIR, key), ctype, cache="immutable")
 
         # ---- 公开接口 ----
         if path == "/api/ping":
