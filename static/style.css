@@ -1391,7 +1391,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
    ============================================================================ */
 .zone-bg {
   position: fixed;
-  inset: 0;
+  /* ★ 2026-10-17：从【导航条下面】开始 ✓ 不能从 0 开始 ✗
+     从 0 开始的话，最上面那一条（导航上面那 108px）会露出这张图被裁到的暗处 ✗
+     看起来就是一条灰带 ✓（主人截图里的图一 ✓）往下滑被首屏盖住就没了 ✓
+     顶上那 108px 交给导航条自己的底色 ✓ 视觉上是一条完整的深色顶栏 ✓ */
+  top: 108px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: -1;
   background-size: cover;
   background-position: center;
