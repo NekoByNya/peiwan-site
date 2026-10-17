@@ -302,6 +302,7 @@ function renderAll() {
   renderSteps();              // ★ 服务流程（2~6 步）
   renderPosPickers();         // ★ 图片显示位置：把五张图按当前位置摆好
   bindPositionDragging();     // ★ 让那五个拖框能拖（鼠标 + 手指）
+  bindPreviewWidthPickers();  // ★ 「预览屏宽」那两排按钮（只挂一次，和上面同一个道理）
   $('#adminWho').textContent = `已登录 · ${state.profile.name || ''}`;
   $('#adminTitle').textContent = `${state.profile.name || ''} 的管理终端`;
 }
@@ -398,8 +399,11 @@ function renderTodoBar() {
 
 /** 点了待办条上的某一项：跳到对应标签页，并把要处理的那一块滚到眼前 */
 function gotoTab(tab, focus) {
+  // ⚠️ 同样按 data-tab 精确匹配（原因见下面 .tab 点击事件里那段注释）
+  const panel = $('[data-panel="' + (tab || '') + '"]');
+  if (!panel) return;
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  $$('[data-panel]').forEach((p) => { p.style.display = p.dataset.panel === tab ? '' : 'none'; });
+  $$('[data-panel]').forEach((p) => { p.style.display = p === panel ? '' : 'none'; });
   const target = focus === 'pending' ? $('#pendingPanel')
     : (focus === 'remind' ? $('#customerRemind') : $('#adminGrid'));
   if (target && target.scrollIntoView) {
@@ -2087,6 +2091,9 @@ Object.entries(ZONE_IMAGE_FIELDS).forEach(([preview, cfg]) => {
         z.profile[cfg.key] = data.url;
       }
       setImagePreview(preview, data.url);
+      // ★ 换图之后预览框必须重画一次：首屏主视觉那个框的比例是拿**这张图自己的**
+      //   宽高比算的（列宽 ÷ 图片宽高比），换一张比例不同的图，框也得跟着变。
+      renderPosPickers();
       stateEl.className = 'hint ok';
       stateEl.textContent = `${cfg.label}已上传，记得点「保存这个分区」`;
       toast(`${cfg.label}已上传`);
@@ -2114,6 +2121,7 @@ $$('[data-clear-zone-image]').forEach((btn) => {
       const preview = Object.entries(ZONE_IMAGE_FIELDS).find(([, c]) => c.key === key);
       if (preview) setImagePreview(preview[0], '');
     }
+    renderPosPickers();   // 图没了 → 预览框也要重画（换成"先上传一张图"的样子）
     $('#zoneState').className = 'hint';
     $('#zoneState').textContent = '已清除，记得点「保存这个分区」';
   });
@@ -2212,6 +2220,8 @@ Object.entries(SITE_IMAGE_FIELDS).forEach(([key, cfg]) => {
       });
       state.profile[key] = data.url;
       setImagePreview(key, data.url);
+      // ★ 换图之后预览框必须重画一次（首屏主视觉那个框是按图片自己的宽高比算的）
+      renderPosPickers();
       stateEl.className = 'hint ok';
       stateEl.textContent = `${cfg.label}已上传，记得点下面的「保存全局资料」`;
       toast(`${cfg.label}已上传`);
@@ -2230,6 +2240,7 @@ $$('[data-clear-image]').forEach((btn) => {
     const key = btn.dataset.clearImage;
     state.profile[key] = '';
     setImagePreview(key, '');
+    renderPosPickers();   // 图没了 → 预览框也要重画
     $('#uploadState').className = 'hint';
     $('#uploadState').textContent = '已清除，记得点「保存全局资料」';
   });
@@ -2377,9 +2388,15 @@ async function compressImage(file, maxWidth = 1600) {
 
 $$('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
+    // ⚠️ 只有"真的对应一个页"的按钮才切页。后台还有其他长得像 .tab 的按钮
+    //    （比如「资料 → 分区图片」里的「预览屏宽」那一排），它们没有 data-tab ——
+    //    不拦一下的话，点它们会把**所有页藏起来**（屏幕上只剩顶栏和标签栏）。
+    //    所以这里改成按 data-tab 精确匹配，而不是"不是当前这个就藏"。
+    const panel = $('[data-panel="' + (tab.dataset.tab || '') + '"]');
+    if (!panel) return;
     $$('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     $$('[data-panel]').forEach((p) => {
-      p.style.display = p.dataset.panel === tab.dataset.tab ? '' : 'none';
+      p.style.display = p === panel ? '' : 'none';
     });
     // ★ 切到「收入」时顺手拉一次数据：点「已确认」/「续费」回来的只有统计，
     //   那条长列表（几千条流水）不该塞进那些响应里，所以在这里补一次。
@@ -2729,6 +2746,8 @@ $('#zoneAdminList').addEventListener('click', async (e) => {
  *   image  拖框里那张 <img> 的 id（用来设 object-position）
  *   value  下面那行小字（当前值）的 id
  *   zone   true = 存在分区资料里，否则存在全局资料里
+ *   hero   true = 首屏主视觉（它的预览比例要用"列宽 × min(高, 430)"那条公式算，
+ *          见 previewBoxRatio —— 背景图那几张不用，它们只跟屏宽有关）
  */
 const POSITION_PICKERS = [
   { box: 'posDragAvatar', key: 'avatarPosition', imgKey: 'avatar',
@@ -2736,11 +2755,11 @@ const POSITION_PICKERS = [
   { box: 'posDragHomeBackground', key: 'backgroundPosition', imgKey: 'background',
     image: 'posImgHomeBackground', value: 'posValueHomeBackground' },
   { box: 'posDragHomeHero', key: 'heroImagePosition', imgKey: 'heroImage',
-    image: 'posImgHomeHero', value: 'posValueHomeHero' },
+    image: 'posImgHomeHero', value: 'posValueHomeHero', hero: true },
   { box: 'posDragZoneBackground', key: 'backgroundPosition', imgKey: 'background',
     image: 'posImgZoneBackground', value: 'posValueZoneBackground', zone: true },
   { box: 'posDragZoneHero', key: 'heroImagePosition', imgKey: 'heroImage',
-    image: 'posImgZoneHero', value: 'posValueZoneHero', zone: true },
+    image: 'posImgZoneHero', value: 'posValueZoneHero', zone: true, hero: true },
 ];
 
 /** 这个拖框该读哪个对象：首页那几张存全局资料，分区那两张存分区资料 */
@@ -2876,6 +2895,199 @@ function syncDragImages() {
   });
 }
 
+/* ==========================================================================
+   ★ 预览屏宽（图片显示位置的预览框，按"客户实际会看到的比例"来画）
+   --------------------------------------------------------------------------
+   要解决的问题：预览框以前**写死**了比例（16/9、498/430），和前台对不上 ——
+   主人拖完位置，客户那边看到的是另一种裁法。
+
+   前台真实情况（都在 style.css 里，这里一行都不改）：
+     · .zone-hero-bg 撑满整个 .zone-hero
+         宽 = 客户屏幕宽度                      ← 变量
+         高 = 首屏内容自然高（≥1024 时实测恒为 564；见下面的数字来源）
+       所以这个框的真实比例是「屏宽 : 首屏高」，**随屏幕变**。
+     · 首屏主视觉 .hero-media img 是 width:100% + max-height:430 + object-fit:cover
+         框宽 = 那一栏的列宽                        ← 屏宽算得出来（见 heroColumnWidth）
+         框高 = min(列宽 ÷ 图片宽高比, 430)          ← 还跟**这张图自己的**宽高比有关
+       所以它必须是按公式算的，钉死一个比例一定不对。
+
+   ★ 数字来源（不是拍的，是量出来的，量法见回报）：
+     1024 / 1440 / 1920 / 2560 屏宽下，主人真实分区首页的 .zone-hero 实测都是 564.28px；
+     430 / 768 下实测 502.75 / 532.22px（此时首屏图还没上传、首屏只有左边那栏文字）。
+     所以 564 / 503 / 532 这三个高度是**实测值**，不是我估的。
+   ========================================================================== */
+
+/** 记着"上次选的预览屏宽"。
+ *  ⚠️ 必须和文案页那个折叠记忆（peiwan.admin.texts.openGroups）用**不同的 key**，
+ *     不然两边会互相覆盖。 */
+const PREVIEW_WIDTH_KEY = 'peiwan.admin.previewScreenWidth';
+
+/** 首屏背景图：屏宽 → 首屏高度（实测值）。顺序就是按钮从左到右的顺序。 */
+const PREVIEW_WIDTHS = [
+  { w: 430, h: 503, label: '手机 430' },
+  { w: 768, h: 532, label: '平板 768' },
+  { w: 1440, h: 564, label: '笔记本 1440' },
+  { w: 1920, h: 564, label: '台式 1920' },
+  { w: 2560, h: 564, label: '大屏 2560' },
+];
+const PREVIEW_WIDTH_DEFAULT = 1920;      // 主人最常用的是台式，默认就停在这一档
+
+/**
+ * 「背景图预览」需要知道【同一屏那张首屏主视觉有没有图】。
+ *
+ * 为什么要知道：≤860px 时前台首屏塌成一栏 ✓ 有首屏图时会变成「图上、文字下」叠起来 ✗
+ * 首屏就比只有文字时高一大截 ✓ 背景图那个框的比例也跟着变 ✓
+ * 这个映射表把「背景图那个框」和「同屏的首屏主视觉图片元素」对上 ✓
+ */
+const HERO_IMG_OF = {
+  posDragZoneBackground: 'posImgZoneHero',
+  posDragHomeBackground: 'posImgHomeHero',
+};
+
+/** 这个背景图预览所在的那一屏，有没有传首屏主视觉图 */
+function hasHeroImage(cfg) {
+  const id = HERO_IMG_OF[cfg.box];
+  if (!id) return false;
+  const img = $('#' + id);
+  return !!(img && img.getAttribute('src'));
+}
+
+/**
+ * 「任意屏宽 → 首屏高度」。
+ *
+ * 按钮只有 5 档，但电脑屏宽是连续的（1024 / 1280 / 1600 … 都有人用）。
+ * 高度只跟"首屏的布局"有关，实测是**分段恒定**的：
+ *   ≤860px  首屏塌成一栏，高度由左边那栏文字决定（430→503、768→532）
+ *   >860px  两栏，首屏高度恒为 564（1024 / 1440 / 1920 / 2560 实测都是 564.28）
+ * 所以这里按"该屏宽下首屏高度的档位值"取 —— 没有按钮的宽度（比如 1024）也能算对。
+ */
+function previewHeightFor(screenW, hasHeroImage) {
+  const hit = PREVIEW_WIDTHS.find((x) => x.w === screenW);
+  let h = hit ? hit.h : (screenW <= 860 ? 503 : 564);   // 落在两档之间就用它所在那一段的高度
+
+  // ★ 2026-10-17 补的一条（主人截图发现 430/768 对不上才查出来的）：
+  //   ≤860px 时前台首屏塌成一栏 ✓ 如果这个分区【传了首屏图】✗
+  //   首屏就变成「图上、文字下」叠起来 ✗ 比只有文字时高出一截 ✓
+  //   实测 delta 分区：没图 430→502.75；有图 430→814.75 ✓
+  //   差的正好是 图片最大高 280 + 两栏间距 32 = 312 ✓ 所以这里补上 ✓
+  //   （564/503/532 这三个基准值本身是实测出来的，不是估的 ✓）
+  if (screenW <= 860 && hasHeroImage) h += 280 + 32;
+  return h;
+}
+
+/** 前台 .container 的宽度：style.css 写着 width: min(1080px, 100% - 32px) */
+const CONTAINER_MAX = 1080;
+const CONTAINER_GUTTER = 32;
+
+/**
+ * 「屏宽 → 首屏主视觉那一栏的列宽」。
+ *
+ * 前台 .hero-grid 在 ≥861px 时是两栏：minmax(0, 1.05fr) minmax(0, .95fr)，gap 32px；
+ * ≤860px 时塌成一栏（.hero-media 还排到前面去）。
+ * 所以列宽 = (min(1080, 屏宽 - 32) - 32) × .95 ÷ 2。
+ *
+ * ★ 这条公式是**量出来核对过**的：430→378.56 / 768→736（单栏）/ 1024→456 /
+ *   1440→497.8 / 1920→497.8，公式和实测最多差 0.15px。
+ */
+function heroColumnWidth(screenW) {
+  const container = Math.min(CONTAINER_MAX, screenW - CONTAINER_GUTTER);
+  if (screenW <= 860) return Math.max(0, container);      // 单栏：整行宽就是列宽
+  return Math.max(0, (container - 32) * 0.95 / 2);        // 两栏：右边那一栏
+}
+
+/** 首屏主视觉那张图现在量得出来的宽高比（图还没加载完就返回 0） */
+function heroImageRatio(cfg) {
+  const img = cfg && cfg.image ? $('#' + cfg.image) : null;
+  if (!img || !img.naturalWidth || !img.naturalHeight) return 0;
+  return img.naturalWidth / img.naturalHeight;
+}
+
+/** 按当前选中的屏宽，算出每个拖框该用什么比例（返回 '宽 / 高' 字符串） */
+function previewBoxRatio(cfg, screenW) {
+  const h = previewHeightFor(screenW, hasHeroImage(cfg));
+  if (cfg.box === 'posDragAvatar') return '1 / 1';        // 头像永远是 1:1（本来就精确）
+  if (cfg.hero) {
+    // 首屏主视觉：列宽 × min(列宽 ÷ 图片宽高比, 430)
+    //   前台 CSS 是 max-height: 430px（≤860px 的屏幕上是 280px）
+    const col = heroColumnWidth(screenW);
+    const maxH = screenW <= 860 ? 280 : 430;
+    const ratio = heroImageRatio(cfg);
+    if (!ratio || col <= 0) {
+      // 还没量到图片尺寸（刚设完 src / 图没加载完）→ 先按"列宽 × 430"占位，
+      // 图一 load 完就会重算一次（bindPositionDragging 里挂了 load 监听）。
+      return col > 0 ? col + ' / ' + maxH : '1 / 1';
+    }
+    return col + ' / ' + Math.min(col / ratio, maxH);
+  }
+  // 背景图：框宽 = 客户屏幕宽度，框高 = 那档屏宽下的首屏高度
+  return screenW + ' / ' + h;
+}
+
+/** 把比例写进那四个拖框（头像不动：它本来就是 1:1，精确的） */
+function applyPreviewWidths() {
+  POSITION_PICKERS.forEach((cfg) => {
+    if (cfg.box === 'posDragAvatar') return;
+    const box = $('#' + cfg.box);
+    if (box) box.style.aspectRatio = previewBoxRatio(cfg, previewScreenWidth);
+  });
+}
+
+/** 那一排按钮 + 下面那行小字跟着选中项一起变（两个面板里各有一排，一起刷） */
+function renderPreviewWidthUI() {
+  $$('[data-preview-width]').forEach((btn) => {
+    const on = Number(btn.dataset.previewWidth) === previewScreenWidth;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const spec = PREVIEW_WIDTHS.find((x) => x.w === previewScreenWidth) || PREVIEW_WIDTHS[3];
+  const text = '现在按【' + spec.label + '】这块屏幕给你看：预览框的宽高比 = 屏宽 '
+    + previewScreenWidth + ' ÷ 首屏高度 ' + previewHeightFor(previewScreenWidth, false)
+    + '，和客户实际看到的裁剪一样。'
+    + ' ⚠️ 手机 / 平板那两档，前台首屏会塌成一栏 —— 传了首屏图就会叠成「图上、文字下」，'
+    + '高度还会随标题长短变一点，所以那两档是【近似】；电脑那三档是精确的。';
+  ['#posScreenWidthHint', '#posScreenWidthHint2'].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.textContent = text;
+  });
+}
+
+/** 点按钮：记住选择（下次打开还是这一档）+ 立刻把四个框换成新比例 + 重画 */
+function setPreviewScreenWidth(w) {
+  if (!PREVIEW_WIDTHS.some((x) => x.w === w)) return;
+  previewScreenWidth = w;
+  try {
+    localStorage.setItem(PREVIEW_WIDTH_KEY, String(w));
+  } catch (err) {
+    /* 隐私模式下 localStorage 会直接抛错，别让它把整页带崩 */
+  }
+  applyPreviewWidths();
+  renderPreviewWidthUI();
+  // ★ 位置值一个字节都不动：这里只是"按新比例重画一遍"（拖完不会被重置）
+  renderPosPickers();
+}
+
+/** 读回上次的选择；没有 / 认不出来 / 存不下 → 用一个安全的默认值（台式 1920） */
+function readPreviewScreenWidth() {
+  let raw = '';
+  try {
+    raw = localStorage.getItem(PREVIEW_WIDTH_KEY) || '';
+  } catch (err) {
+    raw = '';
+  }
+  const n = parseInt(raw, 10);
+  return PREVIEW_WIDTHS.some((x) => x.w === n) ? n : PREVIEW_WIDTH_DEFAULT;
+}
+
+/** 给那两排按钮挂点击（只挂一次，在 renderAll 里跟着 bindPositionDragging 一起） */
+function bindPreviewWidthPickers() {
+  $$('[data-preview-width]').forEach((btn) => {
+    btn.addEventListener('click', () => setPreviewScreenWidth(Number(btn.dataset.previewWidth)));
+  });
+}
+
+/** 当前选中的预览屏宽（全局，页面刚打开时就从 localStorage 读回来） */
+let previewScreenWidth = readPreviewScreenWidth();
+
 /**
  * 画出五个拖框：把图按当前位置摆好、按边界锁住拖不动的方向、更新下面的小字。
  * 顺手把"当前值"那行小字也刷一遍（点「居中」/ 拖动 / 切换分区之后都要重画）。
@@ -2886,6 +3098,11 @@ function syncDragImages() {
  *        不会再触发 load，所以这里再用 requestAnimationFrame 补一次（那时布局已经完成）。
  */
 function renderPosPickers() {
+  // ★ 第一件事：按当前预览屏宽把每个框的比例摆好。
+  //   放在最前面是为了让"换分区 / 重新上传图 / 图 load 完"之后也一定重算一遍
+  //   （图片换了 → 自然宽高比变了 → 首屏主视觉那个框跟着变）。
+  applyPreviewWidths();
+  renderPreviewWidthUI();
   syncDragImages();
   POSITION_PICKERS.forEach((cfg) => {
     const box = $('#' + cfg.box);

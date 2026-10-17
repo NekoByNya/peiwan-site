@@ -364,10 +364,14 @@ check("★ 复制走的是原文（不用先显示）", "span.dataset.pw" in adm
 #   原来断言的是"admin.js 里【任何】localStorage 都不许用"✗
 #   但后来加了「文案页折叠状态记忆」✓ 它必须要用 localStorage ✓
 #   真正要守的是：【密码的显示状态】不许持久化 ✓（刷新后必须回到打码 ✓）
-#   所以改成：localStorage 只允许用来记折叠状态 ✓ 不许碰密码那些 key ✓
+#   所以改成：localStorage 只允许用来记"界面记忆"（折叠 / 预览屏宽）✓ 不许碰密码那些 key ✓
+# ★ 2026-10-17 又加了一条：图片显示位置的「预览屏宽」也要记住（PREVIEW_WIDTH_KEY）——
+#   那同样是界面记忆，和密码无关。所以白名单从 1 个 key 变成 2 个，判据本身不变：
+#   只要出现"记密码 / 记显示状态"的 key 就还是失败。
+_LS_ALLOWED = ("TEXTS_OPEN", "textsOpen", "PREVIEW_WIDTH")
 _ls_calls = re.findall(r"localStorage\.(?:set|get|remove)Item\(([^)]*)", admin_js)
-check("★ 密码显示状态不写进 localStorage（刷新后回到打码）—— 只允许折叠记忆用",
-      all(("TEXTS_OPEN" in c) or ("textsOpen" in c) for c in _ls_calls),
+check("★ 密码显示状态不写进 localStorage（刷新后回到打码）—— 只允许界面记忆用",
+      all(any(a in c for a in _LS_ALLOWED) for c in _ls_calls),
       "localStorage 用到 %d 处：%s" % (len(_ls_calls), [c.strip()[:28] for c in _ls_calls]))
 check("★ 密码不进搜索范围（搜不出密码对他没损失，但能免则免）",
       "c.game, c.server, c.account, c.role, c.gameLevel]" in admin_js)

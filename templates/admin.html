@@ -367,12 +367,22 @@
         五个位置都可以留空。选完图片会先自动压缩，<b>再点下面的「保存这个分区」才会生效</b>。
         建议尺寸：分享图 1200×630；首屏图用 PNG 透明底；价目表长图宽度 1000 左右。
       </p>
-      <p class="hint" style="margin:-8px 0 14px">
-        📐 「显示位置」是给<b>会被裁掉一部分</b>的图用的：<b>按住下面那个框里的图直接拖</b>，
-        拖到想保留的地方松手就行（预览框和客户看到的画面是同一个比例，所见即所得）。
-        拖歪了按「居中」回到中间。<b>微信分享图</b>不提供这个：
-        卡片怎么裁由微信 / QQ 自己决定；<b>价目表长图</b>是整张缩放显示的，不会裁。
+      <p class="hint" style="margin:-8px 0 10px">
+        📐 这张图是<b>铺满整个首屏</b>的，客户屏幕不一样，裁出来的样子也不一样 ——
+        <b>下面切换「预览屏宽」，就能看到客户在你选的那种屏幕上实际会看到什么</b>。
+        想留住哪一块，就<b>按住框里的图直接拖</b>，拖歪了按「居中」回到中间。
+        <b>微信分享图</b>不提供这个：卡片怎么裁由微信 / QQ 自己决定；
+        <b>价目表长图</b>是整张缩放显示的，不会裁。
       </p>
+      <div class="tabs" id="posScreenWidths" style="margin:0 0 6px;align-items:center">
+        <span class="hint" style="margin-right:2px">预览屏宽：</span>
+        <button class="tab" type="button" data-preview-width="430">手机 430</button>
+        <button class="tab" type="button" data-preview-width="768">平板 768</button>
+        <button class="tab" type="button" data-preview-width="1440">笔记本 1440</button>
+        <button class="tab" type="button" data-preview-width="1920">台式 1920</button>
+        <button class="tab" type="button" data-preview-width="2560">大屏 2560</button>
+      </div>
+      <p class="hint" id="posScreenWidthHint" style="margin:0 0 14px"></p>
       <div class="upload-grid">
         <div class="upload-item">
           <label>分区图标（首页卡片小图，正方形最好）</label>
@@ -386,7 +396,7 @@
           <input type="file" id="zBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="background">清除背景图</button>
           <label>显示位置：按住图直接拖（宽图只能左右拖，高图只能上下拖）</label>
-          <div class="pos-drag" id="posDragZoneBackground" style="aspect-ratio:16/9">
+          <div class="pos-drag" id="posDragZoneBackground">
             <img class="pos-drag-img" id="posImgZoneBackground" alt="" draggable="false">
           </div>
           <div class="pos-drag-bar">
@@ -401,7 +411,7 @@
           <input type="file" id="zHeroImageFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-zone-image="heroImage">清除首屏图</button>
           <label>显示位置：按住图直接拖（太高或太宽时会被裁）</label>
-          <div class="pos-drag" id="posDragZoneHero" style="aspect-ratio:498/430">
+          <div class="pos-drag" id="posDragZoneHero">
             <img class="pos-drag-img" id="posImgZoneHero" alt="" draggable="false">
           </div>
           <div class="pos-drag-bar">
@@ -474,6 +484,15 @@
       <div class="field"><label for="pBio">个人介绍（首页「关于我」）</label><textarea id="pBio" maxlength="600"></textarea></div>
       <div class="field"><label for="pTrust">信任信号（每行一条，例如：微博完单量 1000+）</label><textarea id="pTrust" maxlength="600" style="min-height:90px"></textarea></div>
 
+      <div class="tabs" id="posScreenWidths2" style="margin:16px 0 6px;align-items:center">
+        <span class="hint" style="margin-right:2px">预览屏宽：</span>
+        <button class="tab" type="button" data-preview-width="430">手机 430</button>
+        <button class="tab" type="button" data-preview-width="768">平板 768</button>
+        <button class="tab" type="button" data-preview-width="1440">笔记本 1440</button>
+        <button class="tab" type="button" data-preview-width="1920">台式 1920</button>
+        <button class="tab" type="button" data-preview-width="2560">大屏 2560</button>
+      </div>
+      <p class="hint" id="posScreenWidthHint2" style="margin:0 0 14px"></p>
       <div class="upload-grid" style="margin-top:16px">
         <div class="upload-item">
           <label>头像</label>
@@ -502,7 +521,7 @@
           <input type="file" id="siteBackgroundFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="background">清除首页背景图</button>
           <label>显示位置：按住图直接拖（铺满屏幕时会被裁）</label>
-          <div class="pos-drag" id="posDragHomeBackground" style="aspect-ratio:16/9">
+          <div class="pos-drag" id="posDragHomeBackground">
             <img class="pos-drag-img" id="posImgHomeBackground" alt="" draggable="false">
           </div>
           <div class="pos-drag-bar">
@@ -517,7 +536,7 @@
           <input type="file" id="homeHeroFile" accept="image/png,image/jpeg,image/webp">
           <button class="button small ghost" data-clear-image="heroImage">清除首屏主视觉</button>
           <label>显示位置：按住图直接拖（太高时会被裁）</label>
-          <div class="pos-drag" id="posDragHomeHero" style="aspect-ratio:498/430">
+          <div class="pos-drag" id="posDragHomeHero">
             <img class="pos-drag-img" id="posImgHomeHero" alt="" draggable="false">
           </div>
           <div class="pos-drag-bar">
