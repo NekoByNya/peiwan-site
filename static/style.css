@@ -1470,3 +1470,42 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .modal-actions {
   position: static;
 }
+
+/* ============================================================================
+   手机端：首页「分区卡片」改成左右滑动（2026-10-20）
+   ----------------------------------------------------------------------------
+   主人原话：「我觉得可以把手机上的这个大分区，也做成左右滑动的，
+              因为手机上是上下排列的，太长了」
+   以前：.zone-cards 是 grid ✓ 手机上四个分区上下堆 ✗ 一屏看不到底 ✓
+   现在：照抄档位卡那套手感 ✓ flex + 横滑 + 滑动吸附 ✓
+        · 卡片占 78% 宽 ✓ 右边露出一截 = 提示"还能往左滑"✓✓
+        · 一组有几张就滑几张 ✓ 陪玩组一张、代肝组三张 ✓
+   断点 1359px：和档位卡一致 ✓
+   ============================================================================ */
+@media (max-width: 1359px) {
+  .zone-cards {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    /* 滚动条藏掉（手机上本来也不显示 ✓ 这里防止桌面窄窗口露出来 ✗） */
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .zone-cards::-webkit-scrollbar {
+    display: none;
+  }
+  .zone-cards > .zone-card {
+    flex: 0 0 78%;
+    scroll-snap-align: center;
+    /* 横滑时卡片高度对齐 ✓ 否则内容长短不一会有高有低 ✗ */
+    height: auto;
+  }
+  /* 只有一张的组（陪玩）别拉满整屏 ✓ 留出右手边的呼吸 ✓ */
+  .zone-cards > .zone-card:only-child {
+    flex: 0 0 88%;
+  }
+}
