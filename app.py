@@ -1630,7 +1630,12 @@ def zone_start_price(zone):
         nums = [n for n in nums if n > 0]
         return ("¥%d/小时起" % min(nums)) if nums else ""
     texts = []
-    for g in profile["priceGroups"]:
+    # ★ 2026-10-20 修：只算【第一组】（主推档位）✓ 不能算全部 ✗
+    #   原来把所有组的价格一起比 ✗ 结果「加价项」里的 "+180"、"+50"、"+30%"
+    #   被当成最便宜的一档 ✗ 首页卡片显示成「+30%起」✗（3×3 那个分区就中招了）
+    #   现在：起步价只从第一组里选 ✓ 主推档位放第一组 ✓ 加价项放第二组 ✓
+    #   （已有的分区：主推档位本来就在第一组 → 显示结果不变 ✓）
+    for g in profile["priceGroups"][:1]:
         for it in g["items"]:
             text = str(it.get("price") or "").strip()
             if text:
