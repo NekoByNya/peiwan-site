@@ -2094,6 +2094,18 @@ function collectGroups() {
       items,
     };
   }).filter((g) => g.name);
+
+  // ★★ 2026-10-20 保险一：表单没渲染出来时，绝不能用空数组覆盖真数据 ✗✗
+  //   事故：主人在「报价」页看到"还没有价目表"（表单是空的）→ 填了组名 → 点保存
+  //        → 这里返回 [] → 真价目表被清空 ✗ 而且提示"已保存" ✓
+  //   现在：如果 DOM 里一个分组输入框都没有 ✓ 但 state 里明明有分组 ✓
+  //        → 认为"表单没渲染"✓ 直接把原数据还回去 ✓ 不覆盖 ✓
+  const hasGroupDom = document.querySelector('[data-gkey="name"]');
+  const serverGroups = (z && z.profile && z.profile.priceGroups) || [];
+  if (!hasGroupDom && serverGroups.length && groups.length === 0) {
+    console.warn('[保存保险] 价目表表单没渲染出来，保留原数据，不覆盖');
+    return serverGroups;
+  }
   return groups;
 }
 
@@ -4249,6 +4261,23 @@ if ($('#priceZonePick')) {
 if ($('#savePrices')) {
   $('#savePrices').addEventListener('click', () => {
     const el = $('#priceState');
+    // ★★ 2026-10-20 保险二：价目表要从"有"变成"空"时，先问一句 ✗
+    //   事故背景：报价页表单没渲染出来（显示"还没有价目表"）→ 主人点了保存
+    //            → 真数据被空数组覆盖 ✗ 提示还是"已保存" ✗ 骗人 ✓
+    //   现在：DOM 里一个分组框都没有、但数据里有分组 → 弹确认 ✓ 点取消就不保存 ✓
+    const domN = document.querySelectorAll('[data-gkey="name"]').length;
+    const z0 = currentZone();
+    const oldN = ((z0 && z0.profile && z0.profile.priceGroups) || []).length;
+    if (oldN > 0 && domN === 0) {
+      const yes = window.confirm(
+        '价目表这一块现在没显示出来（一个分组框都没有）。\n' +
+        '直接保存会把「' + z0.name + '」已有的 ' + oldN + ' 组价目表清空。\n\n' +
+        '确定要清空吗？\n（建议先点取消，退出后台重新进一次再试）');
+      if (!yes) {
+        if (el) { el.className = 'hint'; el.textContent = '已取消，什么都没改 ✓'; }
+        return;
+      }
+    }
     if (el) { el.className = 'hint'; el.textContent = '正在保存…'; }
     saveZone(false).then((ok) => {
       if (el) {
