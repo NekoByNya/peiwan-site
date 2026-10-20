@@ -338,10 +338,10 @@
     <details class="panel">
       <summary class="panel-head">
         <h2>分区内容</h2>
-        <span class="panel-hint">游戏名、标语、大标题、介绍、亮点、公告</span>
+        <span class="panel-hint">游戏名、标语、大标题、亮点、公告</span>
       </summary>
       <div class="panel-body">
-      <p class="sub" id="zoneContentHint">游戏名、标语、首屏大标题、详细介绍、服务亮点、公告、平台。</p>
+      <p class="sub" id="zoneContentHint">游戏名、标语、首屏大标题、服务亮点、公告、平台。</p>
       <div class="grid-2">
         <div class="field"><label for="zGame">游戏名 / 服务名</label><input id="zGame" maxlength="30" placeholder="例如：守望先锋 / 视频剪辑"></div>
         <div class="field"><label for="zPlatform">接单平台</label><input id="zPlatform" maxlength="30" placeholder="例如：PC 电脑端 / 不限"></div>
@@ -351,7 +351,10 @@
         <div class="field"><label for="zShort">简称（顶部标签用，建议 2–4 字）</label><input id="zShort" maxlength="12"></div>
       </div>
       <div class="field"><label for="zHeadline">首屏大标题（换行 = 两行）</label><textarea id="zHeadline" maxlength="80"></textarea></div>
-      <div class="field"><label for="zBio">详细介绍</label><textarea id="zBio" maxlength="1200"></textarea></div>
+      <!-- ★ 2026-10-20 删：分区级的「详细介绍」✗
+           它存进 zone.profile.bio，但分区页【任何地方都不显示】✗ 填了白填 ✓
+           首页那个「个人介绍」（#pBio）保留 ✓ 那是真在用的 ✓
+           库里已有的 zone bio 数据没删 ✓ 只是不再编辑它 ✓ -->
       <div class="field"><label for="zHighlights">服务亮点 / 打法标签（用中文逗号隔开）</label><input id="zHighlights"></div>
       <div class="field"><label for="zAnnouncement">这个分区的公告（选填）</label><input id="zAnnouncement" maxlength="200"></div>
       </div>

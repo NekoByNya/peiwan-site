@@ -1850,7 +1850,10 @@ function fillZoneForm() {
   $('#zTagline').value = p.tagline || '';
   $('#zSubheadline').value = p.subheadline || '';
   $('#zHeadline').value = p.headline || '';
-  $('#zBio').value = p.bio || '';
+  // 2026-10-20：分区级的「详细介绍」输入框已删（分区页不显示它 ✗ 填了白填）
+  // 这里判空跳过 ✓ 老数据不动 ✓
+  const zbio = $('#zBio');
+  if (zbio) zbio.value = p.bio || '';
   $('#zHighlights').value = (p.highlights || []).join('，');
   $('#zAnnouncement').value = p.announcement || '';
   $('#zPromises').value = (p.promises || []).join('\n');
@@ -1879,7 +1882,9 @@ function collectZoneForm() {
   p.tagline = $('#zTagline').value.trim();
   p.subheadline = $('#zSubheadline').value.trim();
   p.headline = $('#zHeadline').value;
-  p.bio = $('#zBio').value;
+  // 2026-10-20：输入框已删 → 不存在就别动 p.bio ✓（老数据保持原样 ✓）
+  const zbio2 = $('#zBio');
+  if (zbio2) p.bio = zbio2.value;
   p.highlights = $('#zHighlights').value.split(/[，,]/).map((s) => s.trim()).filter(Boolean);
   p.announcement = $('#zAnnouncement').value.trim();
   p.promises = $('#zPromises').value.split('\n').map((s) => s.trim()).filter(Boolean);
