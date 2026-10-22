@@ -266,7 +266,13 @@ check("跨午夜规则：第二天 0 点算休息", st.get(24) == "rest", str(st
 check("跨午夜规则：第二天 5 点算休息", st.get(29) == "rest", str(st.get(29)))
 # 注意：02:00–10:00 那条规则还盖着 6 点，所以用 10 点来验证"跨午夜规则确实在 06:00 结束"
 check("跨午夜规则：06:00 后不再受该规则影响", st.get(34) == "free", str(st.get(34)))
-check("跨午夜规则：第一天 21 点仍可预约", st.get(21) == "free", str(st.get(21)))
+# ★ 2026-10-22 修：原来无条件断言"今天 21 点还能约"✗ 21 点之后跑必挂 ✓
+#   现在只有确实还没到 21 点才断言 ✓
+import datetime as _dt2
+if _dt2.datetime.now().hour < 21:
+    check("跨午夜规则：第一天 21 点仍可预约", st.get(21) == "free", str(st.get(21)))
+else:
+    check("跨午夜规则：21 点已过，这条跳过（现在 %d 点）" % _dt2.datetime.now().hour, True)
 
 rules = call("/api/admin")[1]
 rid = json.loads(rules)["schedule"]["rules"][0]["id"]

@@ -2414,7 +2414,8 @@ function renderGallery() {
 }
 
 /** 浏览器端压缩：把大图缩到指定宽度（默认 1600px）的 WebP，省流量也省存储 */
-async function compressImage(file, maxWidth = 1600) {
+async function compressImage(file, maxWidth = 1600, quality = 0.86) {
+  // ★ 2026-10-22：加了 quality 参数 ✓ 展示墙用 1200/0.78 传得更快 ✓
   if (!file.type.startsWith('image/')) throw new Error('请选择 JPG、PNG 或 WebP 图片。');
   if (file.size > 12 * 1024 * 1024) throw new Error('原图不能超过 12 MB。');
   const bitmap = await createImageBitmap(file);
@@ -2426,8 +2427,8 @@ async function compressImage(file, maxWidth = 1600) {
   canvas.height = h;
   canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
   bitmap.close && bitmap.close();
-  const webp = canvas.toDataURL('image/webp', 0.86);
-  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.86);
+  const webp = canvas.toDataURL('image/webp', quality);
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality);
 }
 
 /* ==========================================================================
@@ -4620,7 +4621,7 @@ $('#saveGallery').addEventListener('click', async () => {
         ? `正在上传 ${i + 1}/${total}：${title}`
         : '正在处理并上传…';
       try {
-        const dataUrl = await compressImage(file);
+        const dataUrl = await compressImage(file, 1200, 0.78);
         const data = await api('/api/admin/gallery', {
           method: 'POST',
           body: JSON.stringify({
