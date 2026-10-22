@@ -813,7 +813,8 @@
       <div class="field"><label for="gCaption">说明 / 评价内容</label><textarea id="gCaption" maxlength="300"></textarea></div>
       <div class="field">
         <label for="gFile">选择图片</label>
-        <input type="file" id="gFile" accept="image/png,image/jpeg,image/webp">
+        <input type="file" id="gFile" accept="image/png,image/jpeg,image/webp" multiple>
+      <p class="hint" style="margin:6px 0 0">★ 可以一次选多张（按住 Ctrl 或拖一个框选 ✓）。选多张时标题自动用文件名 ✓ 只选一张就用上面那个标题 ✓</p>
       </div>
       <div class="check-row"><input type="checkbox" id="gVisible" checked><label for="gVisible">保存后立即在分区页公开</label></div>
       <button class="button primary" id="saveGallery" style="margin-top:14px">保存到展示墙</button>

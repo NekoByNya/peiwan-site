@@ -4589,10 +4589,14 @@ function applyGalleryCategoryResult(data) {
 }
 
 $('#saveGallery').addEventListener('click', async () => {
-  const file = $('#gFile').files[0];
+  // ★ 2026-10-22：支持一次选多张 ✓
+  //   多张时【标题自动用文件名】✓（主人的文件名已经写好了信息 ✓）
+  //   单张时还是用输入框里的标题 ✓（老行为不变 ✓）
+  const files = Array.from(($('#gFile') || {}).files || []);
   const btn = $('#saveGallery');
-  if (!file) return toast('请先选择图片', true);
-  if (!$('#gTitle').value.trim()) return toast('请填写标题', true);
+  if (!files.length) return toast('请先选择图片', true);
+  const multi = files.length > 1;
+  if (!multi && !$('#gTitle').value.trim()) return toast('请填写标题', true);
   const zoneId = $('#gZone').value;
   if (!zoneId) return toast('请先选择这张图属于哪个分区', true);
   // 外链：前端先挡一道（省得白传一张图才被后端洗掉），后端的 clean_link() 还会再挡一道
@@ -4601,37 +4605,61 @@ $('#saveGallery').addEventListener('click', async () => {
     return toast('链接要以 http:// 或 https:// 开头（比如 https://www.bilibili.com/video/BV…）', true);
   }
   btn.disabled = true;
-  $('#galleryHint').textContent = '正在处理并上传…';
+  const hintEl = $('#galleryHint');
+  const total = files.length;
+  let done = 0;
+  const failed = [];
   try {
-    const dataUrl = await compressImage(file);
-    const data = await api('/api/admin/gallery', {
-      method: 'POST',
-      body: JSON.stringify({
-        zone: zoneId,
-        title: $('#gTitle').value.trim(),
-        caption: $('#gCaption').value.trim(),
-        category: $('#gCategory').value,
-        link,                                   // ★ 选填，空字符串也行
-        visible: $('#gVisible').checked,
-        image: dataUrl,
-      }),
-    });
-    state.gallery = data.gallery;
-    state.galleryZoneId = zoneId;
-    if (data.galleryCategories) state.galleryCategories = data.galleryCategories;
-    $('#gTitle').value = '';
-    $('#gCaption').value = '';
-    $('#gLink').value = '';                     // 链接不能留到下一条（不然会串）
-    $('#gFile').value = '';
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // 多张：标题 = 文件名（去掉扩展名）；单张：输入框
+      const title = multi
+        ? (String(file.name || '').replace(/\.[^.]+$/, '').trim() || ('第 ' + (i + 1) + ' 张'))
+        : $('#gTitle').value.trim();
+      hintEl.textContent = multi
+        ? `正在上传 ${i + 1}/${total}：${title}`
+        : '正在处理并上传…';
+      try {
+        const dataUrl = await compressImage(file);
+        const data = await api('/api/admin/gallery', {
+          method: 'POST',
+          body: JSON.stringify({
+            zone: zoneId,
+            title,
+            caption: $('#gCaption').value.trim(),
+            category: $('#gCategory').value,
+            link,                                 // ★ 选填，空字符串也行
+            visible: $('#gVisible').checked,
+            image: dataUrl,
+          }),
+        });
+        state.gallery = data.gallery;
+        state.galleryZoneId = zoneId;
+        if (data.galleryCategories) state.galleryCategories = data.galleryCategories;
+        done += 1;
+      } catch (err) {
+        failed.push(title + '（' + err.message + '）');
+      }
+    }
     fillZonePickers();
     renderGallery();
     renderStats();
-    toast(link ? '展示已保存（带外链，客户点图会新窗口打开）' : '展示已保存，图片上传成功');
+    if (!multi) {
+      $('#gTitle').value = '';
+    }
+    $('#gCaption').value = '';
+    $('#gLink').value = '';                     // 链接不能留到下一条（不然会串）
+    $('#gFile').value = '';
+    if (failed.length) {
+      toast(`上传了 ${done}/${total} 张，失败 ${failed.length} 张：` + failed.join('；'), true);
+    } else {
+      toast(multi ? `已上传 ${done} 张，标题用的是文件名` : (link ? '展示已保存（带外链，客户点图会新窗口打开）' : '展示已保存，图片上传成功'));
+    }
   } catch (err) {
     toast(err.message, true);
   } finally {
     btn.disabled = false;
-    $('#galleryHint').textContent = '';
+    hintEl.textContent = '';
   }
 });
 
